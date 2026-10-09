@@ -77,6 +77,11 @@ function cleanText(value, max = 200) {
   return normalized ? normalized.slice(0, max) : '';
 }
 
+function normalizeSurveyHeaderText(value) {
+  if (typeof value !== 'string') return null;
+  return value.trim().slice(0, 120);
+}
+
 function sha256(value) {
   return createHash('sha256').update(String(value)).digest('hex');
 }
@@ -516,17 +521,20 @@ app.post('/api/surveys', auth, async (req, res) => {
   const tenantId = tenantForUser(req, req.body?.tenantId);
   const title = cleanText(req.body?.title, 200);
   const description = cleanText(req.body?.description, 1000);
+  const headerText = req.body?.headerText === undefined
+    ? 'SUA OPINIÃO IMPORTA'
+    : normalizeSurveyHeaderText(req.body.headerText);
   const questions = normalizeQuestions(req.body?.questions);
-  if (!tenantId || !(await tenantExists(tenantId)) || !title || !questions) {
-    return res.status(400).json({ error: 'Empresa, título e ao menos uma pergunta são obrigatórios.' });
+  if (!tenantId || !(await tenantExists(tenantId)) || !title || !questions || headerText === null) {
+    return res.status(400).json({ error: 'Empresa, título, texto acima da avaliação e ao menos uma pergunta são obrigatórios.' });
   }
 
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
     const survey = await client.query(
-      'INSERT INTO surveys(tenant_id,title,description) VALUES($1,$2,$3) RETURNING *',
-      [tenantId, title, description || null],
+      'INSERT INTO surveys(tenant_id,title,description,theme) VALUES($1,$2,$3,$4::jsonb) RETURNING *',
+      [tenantId, title, description || null, JSON.stringify({ headerText })],
     );
     for (const question of questions) {
       await client.query(
@@ -555,18 +563,23 @@ app.patch('/api/surveys/:id', auth, asyncRoute(async (req, res) => {
 
   const title = cleanText(req.body?.title, 200);
   const description = cleanText(req.body?.description, 1000);
+  const hasHeaderText = req.body?.headerText !== undefined;
+  const headerText = hasHeaderText ? normalizeSurveyHeaderText(req.body.headerText) : null;
   const questions = req.body?.questions === undefined ? null : normalizeQuestions(req.body.questions);
   if (req.body?.questions !== undefined && !questions) return res.status(400).json({ error: 'Revise as perguntas e opções da pesquisa.' });
   if (req.body?.title !== undefined && !title) return res.status(400).json({ error: 'O título é obrigatório.' });
+  if (hasHeaderText && headerText === null) return res.status(400).json({ error: 'O texto acima da avaliação é inválido.' });
   const published = req.body?.published === undefined ? null : Boolean(req.body.published);
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
     await client.query(
       `UPDATE surveys
-          SET title=COALESCE($1,title), description=COALESCE($2,description), published=COALESCE($3,published)
-        WHERE id=$4`,
-      [req.body?.title === undefined ? null : title, req.body?.description === undefined ? null : description, published, surveyId],
+          SET title=COALESCE($1,title), description=COALESCE($2,description), published=COALESCE($3,published),
+              theme=CASE WHEN $4::jsonb IS NULL THEN theme ELSE COALESCE(theme,'{}'::jsonb) || $4::jsonb END
+        WHERE id=$5`,
+      [req.body?.title === undefined ? null : title, req.body?.description === undefined ? null : description, published,
+        hasHeaderText ? JSON.stringify({ headerText }) : null, surveyId],
     );
     if (questions) {
       await client.query('DELETE FROM questions WHERE survey_id=$1', [surveyId]);

@@ -6,6 +6,7 @@ const app = document.querySelector('#app');
 const nativeKiosk = Boolean(globalThis.Capacitor?.Plugins?.OpinaRuntime);
 const AUTH_TOKEN_KEY = 'opina_token';
 const DEFAULT_RATING_QUESTION = 'Como foi a sua experiência?';
+const DEFAULT_SURVEY_HEADER = 'SUA OPINIÃO IMPORTA';
 const DEFAULT_EMOJI_OPTIONS = [
   { value: '1', emoji: '😡', label: 'Péssimo', animation: 'shake' },
   { value: '2', emoji: '😕', label: 'Ruim', animation: 'float' },
@@ -160,7 +161,7 @@ function openDialog({ title, description = '', fields = [], submitLabel = 'Salva
     ? renderEmojiCustomizationFields(field.value, field.name, field.label || 'Personalizar carinhas animadas')
     : field.type === 'select'
       ? `<label>${escapeHtml(field.label)}<select name="${escapeHtml(field.name)}" required>${field.options.map((option) => `<option value="${escapeHtml(option.value)}" ${String(option.value) === String(field.value) ? 'selected' : ''}>${escapeHtml(option.label)}</option>`).join('')}</select></label>`
-      : `<label>${escapeHtml(field.label)}<input name="${escapeHtml(field.name)}" type="${field.type || 'text'}" value="${escapeHtml(field.value || '')}" ${field.minLength ? `minlength="${field.minLength}"` : ''} ${field.required === false ? '' : 'required'}></label>`;
+      : `<label>${escapeHtml(field.label)}<input name="${escapeHtml(field.name)}" type="${field.type || 'text'}" value="${escapeHtml(field.value || '')}" ${field.minLength ? `minlength="${field.minLength}"` : ''} ${field.maxLength ? `maxlength="${field.maxLength}"` : ''} ${field.required === false ? '' : 'required'}></label>`;
   dialog.innerHTML = `<form method="dialog" class="app-dialog__form"><div class="app-dialog__header"><div><p class="section-kicker">OPINA AI</p><h2>${escapeHtml(title)}</h2>${description ? `<p>${escapeHtml(description)}</p>` : ''}</div><button type="button" class="app-dialog__close" aria-label="Fechar">×</button></div><div class="app-dialog__fields">${fields.map(renderField).join('')}</div><div class="app-dialog__actions"><button type="button" class="outline-button app-dialog__cancel">Cancelar</button><button type="submit" class="submit-button compact ${destructive ? 'danger-button' : ''}">${escapeHtml(submitLabel)}</button></div></form>`;
   document.body.appendChild(dialog);
   const dialogType = dialog.querySelector('select[name="type"]');
@@ -347,7 +348,7 @@ async function renderDashboard(root, user) {
         </section>
         <section id="surveys" class="dashboard-section" data-dashboard-view="surveys">
           <div class="section-heading"><div><p class="section-kicker">CONTEÚDO</p><h2>Pesquisas</h2></div></div>
-          <article class="dashboard-card action-card action-card--survey"><div class="action-card__icon" aria-hidden="true">${dashboardIcon('survey')}</div><div class="action-card__intro"><h3>Nova pesquisa</h3><p>Crie a pergunta exibida no tablet.</p></div><form id="survey-form" class="form-stack"><div class="form-grid"><label>Título da pesquisa<input name="title" required placeholder="Ex.: Experiência de atendimento"></label><label>Pergunta para o cliente<input name="question" required value="${DEFAULT_RATING_QUESTION}" placeholder="Digite a pergunta exibida no tablet"></label></div><label>Tipo de resposta<select name="type"><option value="emoji">Carinhas animadas</option><option value="stars">Estrelas (1 a 5)</option><option value="scale">Nota de 1 a 10</option><option value="options">Opções personalizadas</option></select></label>${renderEmojiCustomizationFields()}<label class="options-field is-hidden">Opções separadas por vírgula<input class="options-field is-hidden" name="options" placeholder="Ótimo, Bom, Regular, Ruim"></label><div class="form-submit-row"><button class="submit-button compact" type="submit">Cadastrar pesquisa <span aria-hidden="true">→</span></button><p class="inline-message" id="survey-message" role="status"></p></div></form></article>
+          <article class="dashboard-card action-card action-card--survey"><div class="action-card__icon" aria-hidden="true">${dashboardIcon('survey')}</div><div class="action-card__intro"><h3>Nova pesquisa</h3><p>Crie a pergunta exibida no tablet.</p></div><form id="survey-form" class="form-stack"><div class="form-grid"><label>Título da pesquisa<input name="title" required placeholder="Ex.: Experiência de atendimento"></label><label>Pergunta para o cliente<input name="question" required value="${DEFAULT_RATING_QUESTION}" placeholder="Digite a pergunta exibida no tablet"></label></div><label>Texto acima das avaliações<input name="headerText" maxlength="120" value="${DEFAULT_SURVEY_HEADER}" placeholder="Ex.: SUA OPINIÃO IMPORTA"></label><label>Tipo de resposta<select name="type"><option value="emoji">Carinhas animadas</option><option value="stars">Estrelas (1 a 5)</option><option value="scale">Nota de 1 a 10</option><option value="options">Opções personalizadas</option></select></label>${renderEmojiCustomizationFields()}<label class="options-field is-hidden">Opções separadas por vírgula<input class="options-field is-hidden" name="options" placeholder="Ótimo, Bom, Regular, Ruim"></label><div class="form-submit-row"><button class="submit-button compact" type="submit">Cadastrar pesquisa <span aria-hidden="true">→</span></button><p class="inline-message" id="survey-message" role="status"></p></div></form></article>
           <div class="dashboard-card"><div id="survey-list" class="survey-list">Carregando...</div></div>
         </section>
         <section id="reports" class="dashboard-section report-section" data-dashboard-view="reports">
@@ -457,6 +458,7 @@ async function renderDashboard(root, user) {
       tenantId: selectedTenantId || undefined,
       title: form.get('title'),
       description: form.get('question'),
+      headerText: form.get('headerText'),
       questions: [{ text: form.get('question'), type, options }],
     };
     const message = root.querySelector('#survey-message');
@@ -778,6 +780,7 @@ async function renderDashboard(root, user) {
           description: 'Altere o texto e o tipo de resposta exibidos no tablet.',
           fields: [
             { name: 'title', label: 'Título da pesquisa', value: survey.title },
+            { name: 'headerText', label: 'Texto acima das avaliações', value: typeof survey.theme?.headerText === 'string' ? survey.theme.headerText : DEFAULT_SURVEY_HEADER, maxLength: 120, required: false },
             { name: 'questionText', label: 'Pergunta para o cliente', value: question?.text || survey.description || '' },
             { name: 'type', label: 'Tipo de resposta', value: question?.type || 'emoji', type: 'select', options: [
               { value: 'emoji', label: 'Carinhas animadas' },
@@ -793,7 +796,7 @@ async function renderDashboard(root, user) {
         const nextQuestion = { text: values.questionText, type: values.type, options: values.type === 'emoji' ? readEmojiOptions(values, 'emoji-config') : values.type === 'options' ? values.options.split(',').map((item) => item.trim()).filter(Boolean) : [] };
         button.disabled = true;
         try {
-          await api(`/api/surveys/${survey.id}`, { method: 'PATCH', body: JSON.stringify({ title: values.title, description: values.questionText, questions: [nextQuestion] }) });
+          await api(`/api/surveys/${survey.id}`, { method: 'PATCH', body: JSON.stringify({ title: values.title, headerText: values.headerText, description: values.questionText, questions: [nextQuestion] }) });
           await loadDashboardData();
         } finally { button.disabled = false; }
       };

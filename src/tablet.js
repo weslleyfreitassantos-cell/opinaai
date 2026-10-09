@@ -12,6 +12,7 @@ const KEYS = {
 const WEB_APP_VERSION = 'web-kiosk/0.3.0';
 const ANDROID_APP_VERSION = 'android-kiosk/1.1.0';
 const DEFAULT_RATING_QUESTION = 'Como foi a sua experiência?';
+const DEFAULT_SURVEY_HEADER = 'SUA OPINIÃO IMPORTA';
 const DEFAULT_EMOJI_OPTIONS = [
   { value: '1', emoji: '😡', label: 'Péssimo', animation: 'shake' },
   { value: '2', emoji: '😕', label: 'Ruim', animation: 'float' },
@@ -339,8 +340,9 @@ export async function renderTablet(root) {
     const questions = Array.isArray(survey.questions) ? survey.questions : [];
     const ratingConfirmation = questions.length === 1 && ['emoji', 'stars'].includes(questions[0]?.type);
     const quickSubmit = questions.length === 1 && !ratingConfirmation;
+    const headerText = typeof survey.theme?.headerText === 'string' ? survey.theme.headerText : DEFAULT_SURVEY_HEADER;
     const logoData = safeImageDataUrl(survey.branding?.logoData);
-    root.innerHTML = `<main class="tablet-shell"><section class="survey-kiosk"><header>${logoData ? `<img class="survey-brand-logo" src="${escapeHtml(logoData)}" alt="Logo da empresa">` : ''}<p class="tablet-kicker">SUA OPINIÃO IMPORTA</p>${browserTestMode ? '<p class="browser-test-badge">MODO DE TESTE · NENHUMA RESPOSTA É ENVIADA</p>' : ''}</header><form id="kiosk-form" data-quick-submit="${quickSubmit}">${questions.map(renderQuestion).join('')}${quickSubmit || ratingConfirmation ? '' : '<button class="kiosk-submit" type="submit">Enviar avaliação</button>'}</form><footer>Opina AI · Pesquisa de satisfação</footer></section></main>`;
+    root.innerHTML = `<main class="tablet-shell"><section class="survey-kiosk"><header>${logoData ? `<img class="survey-brand-logo" src="${escapeHtml(logoData)}" alt="Logo da empresa">` : ''}${headerText ? `<p class="tablet-kicker">${escapeHtml(headerText)}</p>` : ''}${browserTestMode ? '<p class="browser-test-badge">MODO DE TESTE · NENHUMA RESPOSTA É ENVIADA</p>' : ''}</header><form id="kiosk-form" data-quick-submit="${quickSubmit}">${questions.map(renderQuestion).join('')}${quickSubmit || ratingConfirmation ? '' : '<button class="kiosk-submit" type="submit">Enviar avaliação</button>'}</form><footer>Opina AI · Pesquisa de satisfação</footer></section></main>`;
     applySurveyBackground(root.querySelector('.survey-kiosk'), survey.branding);
     const form = root.querySelector('#kiosk-form');
     form.onsubmit = submitSurvey;
