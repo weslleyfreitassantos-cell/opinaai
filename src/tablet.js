@@ -216,9 +216,18 @@ export async function renderTablet(root) {
     const previewId = search.get('preview');
     let previewSurvey = null;
     if (previewId && /^[0-9a-f-]{36}$/i.test(previewId)) {
-      const previewKey = `opina_survey_preview_${previewId}`;
-      try { previewSurvey = JSON.parse(localStorage.getItem(previewKey) || 'null'); } catch { /* Ignore expired or invalid previews. */ }
-      localStorage.removeItem(previewKey);
+      try {
+        const payload = JSON.parse(window.name || 'null');
+        if (payload?.previewId === previewId && Array.isArray(payload.survey?.questions)) {
+          previewSurvey = payload.survey;
+          window.name = '';
+        }
+      } catch { /* Ignore invalid window payloads. */ }
+      if (!previewSurvey) {
+        const previewKey = `opina_survey_preview_${previewId}`;
+        try { previewSurvey = JSON.parse(localStorage.getItem(previewKey) || 'null'); } catch { /* Ignore expired or invalid previews. */ }
+        localStorage.removeItem(previewKey);
+      }
     }
     if (previewId && (!previewSurvey || !Array.isArray(previewSurvey.questions))) {
       root.innerHTML = '<main class="tablet-shell"><section class="tablet-card"><p class="tablet-kicker">PRÉ-VISUALIZAÇÃO</p><h1>Prévia indisponível</h1><p class="tablet-copy">Volte ao painel e abra a pré-visualização novamente.</p></section></main>';

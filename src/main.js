@@ -69,6 +69,12 @@ function clearAuthToken() {
   localStorage.removeItem(AUTH_TOKEN_KEY);
 }
 
+function navigatePreviewWindow(previewWindow, previewId, survey) {
+  previewWindow.name = JSON.stringify({ previewId, survey });
+  previewWindow.location.replace(`/tablet?preview=${encodeURIComponent(previewId)}`);
+  previewWindow.opener = null;
+}
+
 if (nativeKiosk) {
   renderTablet(app).catch((error) => {
     console.error('Falha ao iniciar o kiosk Opina AI', error);
@@ -563,6 +569,12 @@ async function renderDashboard(root, user) {
     if (!formElement.reportValidity()) return;
     const button = event.currentTarget;
     const message = root.querySelector('#survey-message');
+    const previewWindow = window.open('about:blank', '_blank');
+    if (!previewWindow) {
+      message.textContent = 'Permita pop-ups para abrir a pré-visualização.';
+      message.classList.add('inline-message--error');
+      return;
+    }
     button.disabled = true;
     message.textContent = '';
     message.classList.remove('inline-message--error');
@@ -586,16 +598,9 @@ async function renderDashboard(root, user) {
         questions: [{ id: 'preview-question', text: form.get('question'), type, options }],
       };
       const previewId = crypto.randomUUID();
-      localStorage.setItem(`opina_survey_preview_${previewId}`, JSON.stringify(survey));
-      const previewWindow = window.open(`/tablet?preview=${encodeURIComponent(previewId)}`, '_blank');
-      if (!previewWindow) {
-        localStorage.removeItem(`opina_survey_preview_${previewId}`);
-        message.textContent = 'Permita pop-ups para abrir a pré-visualização.';
-        message.classList.add('inline-message--error');
-        return;
-      }
-      previewWindow.opener = null;
+      navigatePreviewWindow(previewWindow, previewId, survey);
     } catch (error) {
+      previewWindow.close();
       message.textContent = error.message || 'Não foi possível abrir a pré-visualização.';
       message.classList.add('inline-message--error');
     } finally {
@@ -869,9 +874,7 @@ async function renderDashboard(root, user) {
         try {
           const survey = await api(`/api/surveys/${encodeURIComponent(surveyId)}`);
           const previewId = crypto.randomUUID();
-          localStorage.setItem(`opina_survey_preview_${previewId}`, JSON.stringify(survey));
-          previewWindow.location.replace(`/tablet?preview=${encodeURIComponent(previewId)}`);
-          previewWindow.opener = null;
+          navigatePreviewWindow(previewWindow, previewId, survey);
         } catch (error) {
           previewWindow.close();
           if (message) message.textContent = error.message || 'Não foi possível abrir a pré-visualização.';
