@@ -17,6 +17,10 @@ The debug build defaults to `http://127.0.0.1:4000` for the API and permits clea
 
 The package is `br.com.grupotec.opinaai`. The main activity is portrait-locked, fullscreen, keeps the display awake and registers the Android Keystore-backed `OpinaSecureStorage` plugin for the device secret.
 
+## Administrative kiosk exit
+
+Like the QR kiosk, press two fingers anywhere on the tablet for two seconds to open the administrative exit. Enter the PIN to release the tablet temporarily; the first successful pairing uses that tablet's six-digit pairing code as the local PIN. The PIN hash stays on the device, so the exit flow does not depend on internet access. Use **Voltar ao modo quiosque** when finished.
+
 ## Future managed deployment
 
 The APK is prepared for a later Device Owner/Lock Task rollout, but this campaign does not provision Android Management API, zero-touch or a production signing key. Boot auto-start is best effort and may be blocked by Android background-start policy until Device Owner management is enabled.

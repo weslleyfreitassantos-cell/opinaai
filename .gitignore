@@ -3,6 +3,12 @@ dist/
 .env
 .env.*
 !.env.example
+!.env.production
+!.env.release.example
+.env.release.local
+*.jks
+*.keystore
 work/
 .tmp/
+uploads/
 *.log

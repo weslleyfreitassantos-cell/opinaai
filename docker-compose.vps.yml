@@ -19,6 +19,7 @@ services:
       PORT: 4000
       DATABASE_URL: postgres://opina_ai:${POSTGRES_PASSWORD}@db:5432/opina_ai
       JWT_SECRET: ${JWT_SECRET:?defina JWT_SECRET}
+      CORS_ORIGINS: ${CORS_ORIGINS:-}
       BOOTSTRAP_ADMIN_NAME: ${BOOTSTRAP_ADMIN_NAME:-Administrador Opina AI}
       BOOTSTRAP_ADMIN_EMAIL: ${BOOTSTRAP_ADMIN_EMAIL:-}
       BOOTSTRAP_ADMIN_PASSWORD: ${BOOTSTRAP_ADMIN_PASSWORD:-}
@@ -26,9 +27,18 @@ services:
     ports:
       - "127.0.0.1:4010:4000"
     expose: ["4000"]
+    volumes:
+      - opinaai_uploads:/app/uploads
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4000/api/health').then(r => { if (!r.ok) process.exit(1) }).catch(() => process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
     networks: [opinaai]
 networks:
   opinaai:
     name: opinaai_network
 volumes:
   opinaai_pgdata:
+  opinaai_uploads:

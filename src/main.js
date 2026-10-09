@@ -4,6 +4,63 @@ import { renderTablet } from './tablet.js';
 
 const app = document.querySelector('#app');
 const nativeKiosk = Boolean(globalThis.Capacitor?.Plugins?.OpinaRuntime);
+const AUTH_TOKEN_KEY = 'opina_token';
+const DEFAULT_RATING_QUESTION = 'Como foi a sua experiência?';
+const DEFAULT_EMOJI_OPTIONS = [
+  { value: '1', emoji: '😡', label: 'Péssimo', animation: 'shake' },
+  { value: '2', emoji: '😕', label: 'Ruim', animation: 'float' },
+  { value: '3', emoji: '😐', label: 'Regular', animation: 'pulse' },
+  { value: '4', emoji: '🙂', label: 'Bom', animation: 'bounce' },
+  { value: '5', emoji: '😍', label: 'Ótimo', animation: 'heart' },
+];
+const EMOJI_ANIMATION_OPTIONS = [
+  { value: 'shake', label: 'Tremer' },
+  { value: 'float', label: 'Flutuar' },
+  { value: 'pulse', label: 'Pulsar' },
+  { value: 'bounce', label: 'Quicar' },
+  { value: 'heart', label: 'Brilhar' },
+];
+
+function normalizeEmojiOptions(options) {
+  return DEFAULT_EMOJI_OPTIONS.map((fallback, index) => {
+    const item = Array.isArray(options) ? options[index] : null;
+    return {
+      value: String(index + 1),
+      emoji: String(item?.emoji || (typeof item === 'string' ? item : fallback.emoji)).trim() || fallback.emoji,
+      label: String(item?.label || fallback.label).trim() || fallback.label,
+      animation: EMOJI_ANIMATION_OPTIONS.some((option) => option.value === item?.animation) ? item.animation : fallback.animation,
+    };
+  });
+}
+
+function readEmojiOptions(source, prefix = 'rating') {
+  const get = (name) => typeof source?.get === 'function' ? source.get(name) : source?.[name];
+  return DEFAULT_EMOJI_OPTIONS.map((fallback, index) => ({
+    value: String(index + 1),
+    emoji: String(get(`${prefix}-emoji-${index}`) || fallback.emoji).trim() || fallback.emoji,
+    label: String(get(`${prefix}-label-${index}`) || fallback.label).trim() || fallback.label,
+    animation: EMOJI_ANIMATION_OPTIONS.some((option) => option.value === get(`${prefix}-animation-${index}`)) ? get(`${prefix}-animation-${index}`) : fallback.animation,
+  }));
+}
+
+function renderEmojiCustomizationFields(options = DEFAULT_EMOJI_OPTIONS, prefix = 'rating', legend = 'Personalizar carinhas animadas') {
+  const normalized = normalizeEmojiOptions(options);
+  return `<fieldset class="emoji-customizer emoji-config-field"><legend>${escapeHtml(legend)}</legend><p class="emoji-customizer__hint">Escolha o emoji, o nome e o movimento de cada nota.</p><div class="emoji-customizer__grid">${normalized.map((item, index) => `<div class="emoji-customizer__row"><span class="emoji-customizer__score">${index + 1}</span><input name="${prefix}-emoji-${index}" value="${escapeHtml(item.emoji)}" maxlength="8" aria-label="Emoji da nota ${index + 1}"><input name="${prefix}-label-${index}" value="${escapeHtml(item.label)}" maxlength="40" aria-label="Rótulo da nota ${index + 1}"><select name="${prefix}-animation-${index}" aria-label="Animação da nota ${index + 1}">${EMOJI_ANIMATION_OPTIONS.map((animation) => `<option value="${animation.value}" ${animation.value === item.animation ? 'selected' : ''}>${animation.label}</option>`).join('')}</select></div>`).join('')}</div></fieldset>`;
+}
+
+function authToken() {
+  return sessionStorage.getItem(AUTH_TOKEN_KEY) || localStorage.getItem(AUTH_TOKEN_KEY);
+}
+
+function saveAuthToken(token) {
+  sessionStorage.setItem(AUTH_TOKEN_KEY, token);
+  localStorage.removeItem(AUTH_TOKEN_KEY);
+}
+
+function clearAuthToken() {
+  sessionStorage.removeItem(AUTH_TOKEN_KEY);
+  localStorage.removeItem(AUTH_TOKEN_KEY);
+}
 
 if (nativeKiosk) {
   renderTablet(app).catch((error) => {
@@ -42,7 +99,7 @@ function dashboardIcon(name) {
 }
 
 async function api(path, options = {}) {
-  const token = localStorage.getItem('opina_token');
+  const token = authToken();
   const response = await fetch(path, {
     ...options,
     headers: {
@@ -54,6 +111,89 @@ async function api(path, options = {}) {
   const data = response.status === 204 ? null : await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(data?.error || 'Não foi possível concluir a operação.');
   return data;
+}
+
+async function prepareTenantLogo(file) {
+  const allowedTypes = new Set(['image/png', 'image/jpeg', 'image/webp']);
+  if (!allowedTypes.has(file.type)) throw new Error('Escolha uma imagem PNG, JPEG ou WebP.');
+  if (file.size > 15 * 1024 * 1024) throw new Error('A imagem original deve ter no máximo 15 MB.');
+
+  let bitmap;
+  try {
+    bitmap = await createImageBitmap(file);
+  } catch {
+    throw new Error('Não foi possível abrir essa imagem.');
+  }
+
+  try {
+    const canvas = document.createElement('canvas');
+    const context = canvas.getContext('2d');
+    if (!context) throw new Error('Não foi possível preparar a imagem.');
+    let scale = Math.min(1, 1600 / bitmap.width, 700 / bitmap.height);
+
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+      canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+      canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+      context.clearRect(0, 0, canvas.width, canvas.height);
+      context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+      const quality = Math.max(0.5, 0.92 - attempt * 0.06);
+      let data = canvas.toDataURL('image/webp', quality);
+      if (!data.startsWith('data:image/webp;base64,')) {
+        const fallbackType = file.type === 'image/jpeg' ? 'image/jpeg' : 'image/png';
+        data = canvas.toDataURL(fallbackType, quality);
+      }
+      if (data.length <= 700000) return data;
+      scale *= 0.75;
+    }
+    throw new Error('Não foi possível reduzir a logo para até 512 KB.');
+  } finally {
+    bitmap.close?.();
+  }
+}
+
+function openDialog({ title, description = '', fields = [], submitLabel = 'Salvar', destructive = false }) {
+  const dialog = document.createElement('dialog');
+  dialog.className = 'app-dialog';
+  const renderField = (field) => field.type === 'emoji-config'
+    ? renderEmojiCustomizationFields(field.value, field.name, field.label || 'Personalizar carinhas animadas')
+    : field.type === 'select'
+      ? `<label>${escapeHtml(field.label)}<select name="${escapeHtml(field.name)}" required>${field.options.map((option) => `<option value="${escapeHtml(option.value)}" ${String(option.value) === String(field.value) ? 'selected' : ''}>${escapeHtml(option.label)}</option>`).join('')}</select></label>`
+      : `<label>${escapeHtml(field.label)}<input name="${escapeHtml(field.name)}" type="${field.type || 'text'}" value="${escapeHtml(field.value || '')}" ${field.required === false ? '' : 'required'}></label>`;
+  dialog.innerHTML = `<form method="dialog" class="app-dialog__form"><div class="app-dialog__header"><div><p class="section-kicker">OPINA AI</p><h2>${escapeHtml(title)}</h2>${description ? `<p>${escapeHtml(description)}</p>` : ''}</div><button type="button" class="app-dialog__close" aria-label="Fechar">×</button></div><div class="app-dialog__fields">${fields.map(renderField).join('')}</div><div class="app-dialog__actions"><button type="button" class="outline-button app-dialog__cancel">Cancelar</button><button type="submit" class="submit-button compact ${destructive ? 'danger-button' : ''}">${escapeHtml(submitLabel)}</button></div></form>`;
+  document.body.appendChild(dialog);
+  const dialogType = dialog.querySelector('select[name="type"]');
+  const dialogEmojiConfig = dialog.querySelector('.emoji-config-field');
+  const dialogOptionsField = dialog.querySelector('input[name="options"]')?.closest('label');
+  const syncDialogFields = () => {
+    if (!dialogType) return;
+    dialogEmojiConfig?.classList.toggle('is-hidden', dialogType.value !== 'emoji');
+    dialogOptionsField?.classList.toggle('is-hidden', dialogType.value !== 'options');
+  };
+  dialogType?.addEventListener('change', syncDialogFields);
+  syncDialogFields();
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (value) => {
+      if (settled) return;
+      settled = true;
+      dialog.close();
+      dialog.remove();
+      resolve(value);
+    };
+    dialog.querySelector('.app-dialog__close').onclick = () => finish(null);
+    dialog.querySelector('.app-dialog__cancel').onclick = () => finish(null);
+    dialog.addEventListener('cancel', (event) => { event.preventDefault(); finish(null); }, { once: true });
+    dialog.querySelector('form').onsubmit = (event) => {
+      event.preventDefault();
+      finish(Object.fromEntries(new FormData(event.currentTarget)));
+    };
+    dialog.showModal();
+  });
+}
+
+async function confirmAction(title, description) {
+  const result = await openDialog({ title, description, submitLabel: 'Confirmar', destructive: true, fields: [] });
+  return result !== null;
 }
 
 function renderAdmin(root) {
@@ -149,13 +289,17 @@ function renderLogin(root) {
         method: 'POST',
         body: JSON.stringify({ email: root.querySelector('#email').value, password: passwordInput.value }),
       });
-      localStorage.setItem('opina_token', data.token);
+      saveAuthToken(data.token);
       await renderDashboard(root, data.user);
     } catch (error) {
       formMessage.textContent = error.message;
     }
   });
 
+  const token = authToken();
+  if (token) {
+    api('/api/me').then((user) => renderDashboard(root, user)).catch(() => clearAuthToken());
+  }
 }
 
 async function renderDashboard(root, user) {
@@ -183,7 +327,7 @@ async function renderDashboard(root, user) {
       <section class="dashboard-content">
         <header class="dashboard-topbar">
           <div class="mobile-brand"><span class="brand-symbol" aria-hidden="true">${dashboardIcon('spark')}</span><strong>Opina <em>AI</em></strong></div>
-          <div class="topbar-actions"><a class="primary-button" href="/tablet" target="_blank">Abrir tablet de teste <span aria-hidden="true">↗</span></a><button id="logout" class="topbar-logout" type="button">Sair</button></div>
+          <div class="topbar-actions"><span id="dashboard-status" class="sync-status" role="status" aria-live="polite"><i></i>Atualizado</span><a class="primary-button" href="/tablet" target="_blank">Abrir tablet de teste <span aria-hidden="true">↗</span></a><button id="change-password" class="topbar-account" type="button">Minha senha</button><button id="logout" class="topbar-logout" type="button">Sair</button></div>
         </header>
         <section id="overview" class="dashboard-page-header">
           <div><p class="section-kicker">PAINEL</p><h1 id="page-title">Visão geral</h1><p id="page-subtitle" class="page-subtitle">Acompanhe as avaliações e a operação dos tablets.</p></div>
@@ -201,10 +345,22 @@ async function renderDashboard(root, user) {
         </section>
         <section id="surveys" class="dashboard-section" data-dashboard-view="surveys">
           <div class="section-heading"><div><p class="section-kicker">CONTEÚDO</p><h2>Pesquisas</h2></div></div>
-          <article class="dashboard-card action-card action-card--survey"><div class="action-card__icon" aria-hidden="true">${dashboardIcon('survey')}</div><div class="action-card__intro"><h3>Nova pesquisa</h3><p>Crie a pergunta exibida no tablet.</p></div><form id="survey-form" class="form-stack"><div class="form-grid"><label>Título da pesquisa<input name="title" required placeholder="Ex.: Experiência de atendimento"></label><label>Pergunta para o cliente<input name="question" required placeholder="Como você avalia sua experiência?"></label></div><label>Tipo de resposta<select name="type"><option value="emoji">Carinhas de satisfação</option><option value="stars">Estrelas (1 a 5)</option><option value="scale">Nota de 1 a 10</option><option value="options">Opções personalizadas</option></select></label><label class="options-field is-hidden">Opções separadas por vírgula<input class="options-field is-hidden" name="options" placeholder="Ótimo, Bom, Regular, Ruim"></label><div class="form-submit-row"><button class="submit-button compact" type="submit">Cadastrar pesquisa <span aria-hidden="true">→</span></button><p class="inline-message" id="survey-message" role="status"></p></div></form></article>
+          <article class="dashboard-card action-card action-card--survey"><div class="action-card__icon" aria-hidden="true">${dashboardIcon('survey')}</div><div class="action-card__intro"><h3>Nova pesquisa</h3><p>Crie a pergunta exibida no tablet.</p></div><form id="survey-form" class="form-stack"><div class="form-grid"><label>Título da pesquisa<input name="title" required placeholder="Ex.: Experiência de atendimento"></label><label>Pergunta para o cliente<input name="question" required value="${DEFAULT_RATING_QUESTION}" placeholder="Digite a pergunta exibida no tablet"></label></div><label>Tipo de resposta<select name="type"><option value="emoji">Carinhas animadas</option><option value="stars">Estrelas (1 a 5)</option><option value="scale">Nota de 1 a 10</option><option value="options">Opções personalizadas</option></select></label>${renderEmojiCustomizationFields()}<label class="options-field is-hidden">Opções separadas por vírgula<input class="options-field is-hidden" name="options" placeholder="Ótimo, Bom, Regular, Ruim"></label><div class="form-submit-row"><button class="submit-button compact" type="submit">Cadastrar pesquisa <span aria-hidden="true">→</span></button><p class="inline-message" id="survey-message" role="status"></p></div></form></article>
           <div class="dashboard-card"><div id="survey-list" class="survey-list">Carregando...</div></div>
         </section>
-        <section id="reports" class="dashboard-section report-section" data-dashboard-view="reports"><div class="section-heading"><div><p class="section-kicker">RESULTADOS</p><h2>Relatórios</h2></div><div class="section-heading__action"><span id="report-total" class="section-counter">Carregando...</span><button id="print-report" class="outline-button report-print-button" type="button"><span aria-hidden="true">${dashboardIcon('printer')}</span>Imprimir relatório</button></div></div><p id="report-print-context" class="report-print-context"></p><div class="dashboard-card report-card"><div class="report-toolbar"><div class="date-row"><label>De <input id="from" type="date"></label><label>Até <input id="to" type="date"></label></div><div class="report-filters"><label>Pesquisa<select id="report-survey"><option value="">Todas</option></select></label><label>Unidade<select id="report-location"><option value="">Todas</option></select></label><label>Tablet<select id="report-device"><option value="">Todos</option></select></label></div><button id="load-report" class="outline-button" type="button">Atualizar <span aria-hidden="true">↻</span></button></div><div class="report-results"><div class="report-results__header"><h3>Distribuição</h3><span>Respostas por avaliação</span></div><div id="report-distribution" class="distribution-list"></div><div id="report-list" class="report-list"></div></div></div></section>
+        <section id="reports" class="dashboard-section report-section" data-dashboard-view="reports">
+          <div class="section-heading">
+            <div class="report-heading-copy">
+              <p class="section-kicker">RESULTADOS</p>
+              <h2>Relatórios</h2>
+              <div class="report-print-identity"><strong id="report-company-name"></strong><img id="report-company-logo" alt="Logo da empresa" hidden></div>
+            </div>
+            <div class="section-heading__action"><span id="report-total" class="section-counter">Carregando...</span><button id="print-report" class="outline-button report-print-button" type="button"><span aria-hidden="true">${dashboardIcon('printer')}</span>Imprimir relatório</button></div>
+          </div>
+          ${['SUPERADMIN', 'ADMIN'].includes(user.role) ? `<article id="report-branding-controls" class="dashboard-card report-branding-controls"><div class="report-logo-preview"><img id="tenant-logo-preview" alt="Prévia da logo da empresa" hidden><span id="tenant-logo-placeholder" aria-hidden="true">${dashboardIcon('spark')}</span></div><div class="report-branding-copy"><strong>Logo da empresa</strong><small id="tenant-logo-hint">PNG, JPEG ou WebP. Será exibida no cabeçalho do relatório impresso.</small><p id="tenant-logo-message" role="status" aria-live="polite"></p></div><div class="report-branding-actions"><label class="outline-button report-logo-select">Selecionar logo<input id="tenant-logo-input" type="file" accept="image/png,image/jpeg,image/webp"></label><button id="remove-tenant-logo" class="outline-button" type="button" disabled>Remover</button></div></article>` : ''}
+          <p id="report-print-context" class="report-print-context"></p>
+          <div class="dashboard-card report-card"><div class="report-toolbar"><div class="date-row"><label>De <input id="from" type="date"></label><label>Até <input id="to" type="date"></label></div><div class="report-filters"><label>Pesquisa<select id="report-survey"><option value="">Todas</option></select></label><label>Unidade<select id="report-location"><option value="">Todas</option></select></label><label>Tablet<select id="report-device"><option value="">Todos</option></select></div><button id="load-report" class="outline-button" type="button">Atualizar <span aria-hidden="true">↻</span></button></div><div class="report-results"><div class="report-results__header"><h3>Distribuição</h3><span>Respostas por avaliação</span></div><div id="report-distribution" class="distribution-list"></div><div id="report-list" class="report-list"></div></div></div>
+        </section>
       </section>
     </main>`;
 
@@ -229,7 +385,34 @@ async function renderDashboard(root, user) {
   window.onhashchange = () => showDashboardView(location.hash.slice(1), false);
   showDashboardView(location.hash.slice(1), false);
 
-  root.querySelector('#logout').onclick = () => { localStorage.removeItem('opina_token'); location.reload(); };
+  root.querySelector('#logout').onclick = () => { clearAuthToken(); location.reload(); };
+  root.querySelector('#change-password').onclick = async () => {
+    const values = await openDialog({
+      title: 'Trocar senha',
+      description: 'Use uma senha com pelo menos 12 caracteres.',
+      fields: [
+        { name: 'currentPassword', label: 'Senha atual', type: 'password' },
+        { name: 'newPassword', label: 'Nova senha', type: 'password' },
+        { name: 'confirmPassword', label: 'Confirmar nova senha', type: 'password' },
+      ],
+      submitLabel: 'Atualizar senha',
+    });
+    if (!values) return;
+    const status = root.querySelector('#dashboard-status');
+    if (values.newPassword !== values.confirmPassword) {
+      status.innerHTML = '<i></i>As senhas não conferem';
+      status.classList.add('sync-status--error');
+      return;
+    }
+    try {
+      await api('/api/auth/change-password', { method: 'POST', body: JSON.stringify(values) });
+      status.innerHTML = '<i></i>Senha atualizada';
+      status.classList.remove('sync-status--error');
+    } catch (error) {
+      status.innerHTML = `<i></i>${escapeHtml(error.message)}`;
+      status.classList.add('sync-status--error');
+    }
+  };
 
   if (user.role === 'SUPERADMIN') {
     root.querySelector('#tenant-filter').onchange = async (event) => {
@@ -240,43 +423,55 @@ async function renderDashboard(root, user) {
       event.preventDefault();
       const form = new FormData(event.target);
       const message = root.querySelector('#tenant-message');
+      const submitButton = event.target.querySelector('button[type="submit"]');
+      submitButton.disabled = true;
       try {
         const created = await api('/api/tenants', { method: 'POST', body: JSON.stringify(Object.fromEntries(form)) });
         message.textContent = 'Empresa criada.';
         tenants = await api('/api/tenants');
         selectedTenantId = created.tenant.id;
         await renderDashboard(root, user);
-      } catch (error) { message.textContent = error.message; }
+      } catch (error) { message.textContent = error.message; } finally { submitButton.disabled = false; }
     };
   }
 
   const typeSelect = root.querySelector('#survey-form [name=type]');
-  const toggleOptions = () => root.querySelectorAll('.options-field').forEach((node) => node.classList.toggle('is-hidden', typeSelect.value !== 'options'));
-  typeSelect.onchange = toggleOptions;
-  toggleOptions();
+  const toggleSurveyFields = () => {
+    root.querySelectorAll('.options-field').forEach((node) => node.classList.toggle('is-hidden', typeSelect.value !== 'options'));
+    root.querySelectorAll('.emoji-config-field').forEach((node) => node.classList.toggle('is-hidden', typeSelect.value !== 'emoji'));
+  };
+  typeSelect.onchange = toggleSurveyFields;
+  toggleSurveyFields();
 
   root.querySelector('#survey-form').onsubmit = async (event) => {
     event.preventDefault();
     const form = new FormData(event.target);
-    const options = String(form.get('options') || '').split(',').map((item) => item.trim()).filter(Boolean);
+    const type = String(form.get('type') || 'emoji');
+    const options = type === 'emoji'
+      ? readEmojiOptions(form, 'rating')
+      : String(form.get('options') || '').split(',').map((item) => item.trim()).filter(Boolean);
     const payload = {
       tenantId: selectedTenantId || undefined,
       title: form.get('title'),
       description: form.get('question'),
-      questions: [{ text: form.get('question'), type: form.get('type'), options }],
+      questions: [{ text: form.get('question'), type, options }],
     };
     const message = root.querySelector('#survey-message');
+    const submitButton = event.target.querySelector('button[type="submit"]');
+    submitButton.disabled = true;
     try {
       await api('/api/surveys', { method: 'POST', body: JSON.stringify(payload) });
       message.textContent = 'Pesquisa cadastrada. Agora associe-a a um tablet.';
-      event.target.reset(); toggleOptions(); await loadDashboardData();
-    } catch (error) { message.textContent = error.message; }
+      event.target.reset(); toggleSurveyFields(); await loadDashboardData();
+    } catch (error) { message.textContent = error.message; } finally { submitButton.disabled = false; }
   };
 
   root.querySelector('#pair-form').onsubmit = async (event) => {
     event.preventDefault();
     const form = new FormData(event.target);
     const message = root.querySelector('#pair-message');
+    const submitButton = event.target.querySelector('button[type="submit"]');
+    submitButton.disabled = true;
     try {
       await api('/api/devices/pair', {
         method: 'POST',
@@ -285,7 +480,7 @@ async function renderDashboard(root, user) {
       message.textContent = 'Tablet pareado com sucesso.';
       event.target.reset(); event.target.querySelector('[name=locationName]').value = 'Recepção';
       await loadDashboardData();
-    } catch (error) { message.textContent = error.message; }
+    } catch (error) { message.textContent = error.message; } finally { submitButton.disabled = false; }
   };
 
   root.querySelector('#load-report').onclick = loadDashboardData;
@@ -294,13 +489,150 @@ async function renderDashboard(root, user) {
     printReportButton.disabled = true;
     try {
       await loadDashboardData();
+      const printLogo = root.querySelector('#report-company-logo');
+      if (printLogo && !printLogo.hidden && printLogo.decode) await printLogo.decode().catch(() => {});
       window.print();
     } finally {
       printReportButton.disabled = false;
     }
   };
 
+  const tenantLogoInput = root.querySelector('#tenant-logo-input');
+  const removeTenantLogoButton = root.querySelector('#remove-tenant-logo');
+  let brandingTenantId = null;
+  let tenantBranding = null;
+
+  function applyTenantBranding(branding) {
+    const logoData = branding?.logoData || '';
+    const reportIdentity = root.querySelector('.report-print-identity');
+    const reportCompanyName = root.querySelector('#report-company-name');
+    const reportLogo = root.querySelector('#report-company-logo');
+    const preview = root.querySelector('#tenant-logo-preview');
+    const placeholder = root.querySelector('#tenant-logo-placeholder');
+
+    if (reportCompanyName) reportCompanyName.textContent = branding?.name || '';
+    if (reportIdentity) reportIdentity.hidden = !branding?.name && !logoData;
+    if (reportLogo) {
+      reportLogo.hidden = !logoData;
+      if (logoData) {
+        reportLogo.src = logoData;
+        reportLogo.alt = branding?.name ? `Logo de ${branding.name}` : 'Logo da empresa';
+      } else {
+        reportLogo.removeAttribute('src');
+      }
+    }
+    if (preview) {
+      preview.hidden = !logoData;
+      if (logoData) {
+        preview.src = logoData;
+        preview.alt = branding?.name ? `Prévia da logo de ${branding.name}` : 'Prévia da logo da empresa';
+      } else {
+        preview.removeAttribute('src');
+      }
+    }
+    if (placeholder) placeholder.hidden = Boolean(logoData);
+    if (tenantLogoInput) tenantLogoInput.disabled = !selectedTenantId;
+    if (removeTenantLogoButton) removeTenantLogoButton.disabled = !selectedTenantId || !logoData;
+  }
+
+  async function loadTenantBranding() {
+    const requestedTenantId = String(selectedTenantId || '');
+    if (!requestedTenantId) {
+      brandingTenantId = null;
+      tenantBranding = null;
+      applyTenantBranding(null);
+      return;
+    }
+    if (brandingTenantId === requestedTenantId && tenantBranding) {
+      applyTenantBranding(tenantBranding);
+      return;
+    }
+    brandingTenantId = null;
+    tenantBranding = null;
+    applyTenantBranding(null);
+    const branding = await api(`/api/tenant/branding?tenantId=${encodeURIComponent(requestedTenantId)}`);
+    if (String(selectedTenantId || '') !== requestedTenantId) return;
+    brandingTenantId = requestedTenantId;
+    tenantBranding = branding;
+    applyTenantBranding(branding);
+  }
+
+  tenantLogoInput?.addEventListener('change', async (event) => {
+    const file = event.currentTarget.files?.[0];
+    if (!file) return;
+    const tenantId = selectedTenantId;
+    const message = root.querySelector('#tenant-logo-message');
+    const removeButton = root.querySelector('#remove-tenant-logo');
+    tenantLogoInput.disabled = true;
+    if (removeButton) removeButton.disabled = true;
+    message.textContent = 'Preparando logo...';
+    try {
+      const logoData = await prepareTenantLogo(file);
+      message.textContent = 'Salvando logo...';
+      await api('/api/tenant/branding', {
+        method: 'PUT',
+        body: JSON.stringify({ tenantId, logoData }),
+      });
+      if (String(selectedTenantId) === String(tenantId)) {
+        tenantBranding = { ...tenantBranding, id: tenantId, logoData };
+        brandingTenantId = String(tenantId);
+        applyTenantBranding(tenantBranding);
+      }
+      message.textContent = 'Logo salva e adicionada ao relatório.';
+    } catch (error) {
+      message.textContent = error.message;
+    } finally {
+      tenantLogoInput.value = '';
+      tenantLogoInput.disabled = !selectedTenantId;
+      if (removeButton) removeButton.disabled = !selectedTenantId || !tenantBranding?.logoData;
+    }
+  });
+
+  removeTenantLogoButton?.addEventListener('click', async () => {
+    const tenantId = selectedTenantId;
+    const message = root.querySelector('#tenant-logo-message');
+    removeTenantLogoButton.disabled = true;
+    tenantLogoInput.disabled = true;
+    message.textContent = 'Removendo logo...';
+    try {
+      await api('/api/tenant/branding', {
+        method: 'PUT',
+        body: JSON.stringify({ tenantId, logoData: null }),
+      });
+      if (String(selectedTenantId) === String(tenantId)) {
+        tenantBranding = { ...tenantBranding, id: tenantId, logoData: null };
+        brandingTenantId = String(tenantId);
+        applyTenantBranding(tenantBranding);
+      }
+      message.textContent = 'Logo removida do relatório.';
+    } catch (error) {
+      message.textContent = error.message;
+      removeTenantLogoButton.disabled = !tenantBranding?.logoData;
+    } finally {
+      tenantLogoInput.disabled = !selectedTenantId;
+    }
+  });
+
   async function loadDashboardData() {
+    const status = root.querySelector('#dashboard-status');
+    try {
+      await loadDashboardDataUnsafe();
+      if (status) {
+        status.innerHTML = '<i></i>Atualizado agora';
+        status.classList.remove('sync-status--error');
+      }
+    } catch (error) {
+      if (status) {
+        status.innerHTML = '<i></i>Falha ao atualizar';
+        status.classList.add('sync-status--error');
+      }
+      const visibleMessage = root.querySelector('.inline-message');
+      if (visibleMessage) visibleMessage.textContent = error.message;
+    }
+  }
+
+  async function loadDashboardDataUnsafe() {
+    await loadTenantBranding();
     const suffix = selectedTenantId ? `?tenantId=${encodeURIComponent(selectedTenantId)}` : '';
     const reportParams = new URLSearchParams();
     if (selectedTenantId) reportParams.set('tenantId', selectedTenantId);
@@ -384,41 +716,73 @@ async function renderDashboard(root, user) {
     });
     root.querySelectorAll('.edit-device').forEach((button) => {
       button.onclick = async () => {
-        const name = prompt('Nome do tablet', button.dataset.name);
-        if (name === null) return;
-        const locationName = prompt('Unidade / local', button.dataset.location || 'Recepção');
-        if (locationName === null) return;
-        await api(`/api/devices/${button.dataset.device}`, { method: 'PATCH', body: JSON.stringify({ name, locationName }) });
-        await loadDashboardData();
+        const values = await openDialog({
+          title: 'Editar tablet',
+          description: 'Atualize a identificação e o local de operação.',
+          fields: [
+            { name: 'name', label: 'Nome do tablet', value: button.dataset.name },
+            { name: 'locationName', label: 'Unidade / local', value: button.dataset.location || 'Recepção' },
+          ],
+        });
+        if (!values) return;
+        button.disabled = true;
+        try {
+          await api(`/api/devices/${button.dataset.device}`, { method: 'PATCH', body: JSON.stringify(values) });
+          await loadDashboardData();
+        } finally { button.disabled = false; }
       };
     });
     root.querySelectorAll('.unpair-device').forEach((button) => {
-      button.onclick = async () => { if (!confirm('Desparear este tablet? A pesquisa ativa será removida.')) return; await api(`/api/devices/${button.dataset.device}/unpair`, { method: 'POST' }); await loadDashboardData(); };
+      button.onclick = async () => {
+        if (!await confirmAction('Desparear tablet?', 'A pesquisa ativa será removida do dispositivo.')) return;
+        button.disabled = true;
+        try { await api(`/api/devices/${button.dataset.device}/unpair`, { method: 'POST' }); await loadDashboardData(); }
+        finally { button.disabled = false; }
+      };
     });
     root.querySelectorAll('.deactivate-device').forEach((button) => {
-      button.onclick = async () => { if (!confirm('Desativar este tablet?')) return; await api(`/api/devices/${button.dataset.device}`, { method: 'DELETE' }); await loadDashboardData(); };
+      button.onclick = async () => {
+        if (!await confirmAction('Desativar tablet?', 'O dispositivo deixará de receber pesquisas até ser ativado novamente.')) return;
+        button.disabled = true;
+        try { await api(`/api/devices/${button.dataset.device}`, { method: 'DELETE' }); await loadDashboardData(); }
+        finally { button.disabled = false; }
+      };
     });
     root.querySelectorAll('.edit-survey').forEach((button) => {
       button.onclick = async () => {
         const survey = await api(`/api/surveys/${button.dataset.survey}`);
         const question = survey.questions?.[0];
-        const title = prompt('Título da pesquisa', survey.title);
-        if (title === null) return;
-        const questionText = prompt('Pergunta', question?.text || survey.description || '');
-        if (questionText === null) return;
-        const responseType = prompt('Tipo de resposta: emoji, stars, scale ou options', question?.type || 'emoji');
-        if (responseType === null) return;
-        const nextType = responseType.trim().toLowerCase();
-        if (!['emoji', 'stars', 'scale', 'options'].includes(nextType)) { alert('Tipo inválido. Use emoji, stars, scale ou options.'); return; }
-        const options = nextType === 'options' ? prompt('Opções separadas por vírgula', (question?.options || []).join(', ')) : null;
-        if (nextType === 'options' && options === null) return;
-        const nextQuestion = { text: questionText, type: nextType, options: nextType === 'options' ? options.split(',').map((item) => item.trim()).filter(Boolean) : [] };
-        await api(`/api/surveys/${survey.id}`, { method: 'PATCH', body: JSON.stringify({ title, description: questionText, questions: [nextQuestion] }) });
-        await loadDashboardData();
+        const values = await openDialog({
+          title: 'Editar pesquisa',
+          description: 'Altere o texto e o tipo de resposta exibidos no tablet.',
+          fields: [
+            { name: 'title', label: 'Título da pesquisa', value: survey.title },
+            { name: 'questionText', label: 'Pergunta para o cliente', value: question?.text || survey.description || '' },
+            { name: 'type', label: 'Tipo de resposta', value: question?.type || 'emoji', type: 'select', options: [
+              { value: 'emoji', label: 'Carinhas animadas' },
+              { value: 'stars', label: 'Estrelas (1 a 5)' },
+              { value: 'scale', label: 'Nota de 1 a 10' },
+              { value: 'options', label: 'Opções personalizadas' },
+            ] },
+            { name: 'emoji-config', label: 'Personalizar carinhas animadas', value: normalizeEmojiOptions(question?.options), type: 'emoji-config' },
+            { name: 'options', label: 'Opções separadas por vírgula', value: (question?.options || []).join(', '), required: false },
+          ],
+        });
+        if (!values) return;
+        const nextQuestion = { text: values.questionText, type: values.type, options: values.type === 'emoji' ? readEmojiOptions(values, 'emoji-config') : values.type === 'options' ? values.options.split(',').map((item) => item.trim()).filter(Boolean) : [] };
+        button.disabled = true;
+        try {
+          await api(`/api/surveys/${survey.id}`, { method: 'PATCH', body: JSON.stringify({ title: values.title, description: values.questionText, questions: [nextQuestion] }) });
+          await loadDashboardData();
+        } finally { button.disabled = false; }
       };
     });
     root.querySelectorAll('.toggle-survey').forEach((button) => {
-      button.onclick = async () => { await api(`/api/surveys/${button.dataset.survey}`, { method: 'PATCH', body: JSON.stringify({ published: button.dataset.published !== 'true' }) }); await loadDashboardData(); };
+      button.onclick = async () => {
+        button.disabled = true;
+        try { await api(`/api/surveys/${button.dataset.survey}`, { method: 'PATCH', body: JSON.stringify({ published: button.dataset.published !== 'true' }) }); await loadDashboardData(); }
+        finally { button.disabled = false; }
+      };
     });
     for (const id of ['report-survey', 'report-location', 'report-device']) root.querySelector(`#${id}`).onchange = loadDashboardData;
   }

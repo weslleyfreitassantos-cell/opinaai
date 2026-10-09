@@ -3,12 +3,32 @@ apply plugin: 'com.android.application'
 android {
     namespace = "br.com.grupotec.opinaai"
     compileSdk = rootProject.ext.compileSdkVersion
+    def releaseStoreFile = System.getenv('OPINA_KEYSTORE_PATH')
+    def releaseStorePassword = System.getenv('OPINA_KEYSTORE_PASSWORD')
+    def releaseKeyAlias = System.getenv('OPINA_KEY_ALIAS')
+    def releaseKeyPassword = System.getenv('OPINA_KEY_PASSWORD')
+    def releaseSigningReady = [releaseStoreFile, releaseStorePassword, releaseKeyAlias, releaseKeyPassword].every { it }
+    if (gradle.startParameter.taskNames.any { it.toLowerCase().contains('release') } && !releaseSigningReady) {
+        throw new GradleException('Release sem assinatura. Defina OPINA_KEYSTORE_PATH, OPINA_KEYSTORE_PASSWORD, OPINA_KEY_ALIAS e OPINA_KEY_PASSWORD.')
+    }
+    if (releaseSigningReady) {
+        signingConfigs {
+            release {
+                storeFile file(releaseStoreFile)
+                storePassword releaseStorePassword
+                keyAlias releaseKeyAlias
+                keyPassword releaseKeyPassword
+            }
+        }
+    }
+    def versionCodeValue = System.getenv('OPINA_VERSION_CODE')
+    def versionNameValue = System.getenv('OPINA_VERSION_NAME')
     defaultConfig {
         applicationId "br.com.grupotec.opinaai"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 2
-        versionName "1.1"
+        versionCode versionCodeValue ? versionCodeValue.toInteger() : 3
+        versionName versionNameValue ?: '1.2.0'
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -20,6 +40,7 @@ android {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            if (releaseSigningReady) signingConfig signingConfigs.release
         }
     }
 }

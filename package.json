@@ -10,9 +10,11 @@
     "build": "vite build",
     "preview": "vite preview --host 0.0.0.0",
     "check": "node --check server/index.js && node --check src/main.js && node --check src/tablet.js",
-    "test": "node --test test/integration.test.js",
+    "test": "node --test",
+    "test:integration": "node --test test/integration.test.js",
     "android:sync": "npm run build && npx cap sync android",
     "android:build": "npm run android:sync && android\\gradlew.bat --project-dir android --no-daemon assembleDebug",
+    "android:release": "node scripts/build-android-release.mjs",
     "android:install": "npm run android:build && adb install -r android\\app\\build\\outputs\\apk\\debug\\app-debug.apk"
   },
   "dependencies": {

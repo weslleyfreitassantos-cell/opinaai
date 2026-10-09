@@ -11,6 +11,15 @@ const KEYS = {
 };
 const WEB_APP_VERSION = 'web-kiosk/0.3.0';
 const ANDROID_APP_VERSION = 'android-kiosk/1.1.0';
+const DEFAULT_RATING_QUESTION = 'Como foi a sua experiência?';
+const DEFAULT_EMOJI_OPTIONS = [
+  { value: '1', emoji: '😡', label: 'Péssimo', animation: 'shake' },
+  { value: '2', emoji: '😕', label: 'Ruim', animation: 'float' },
+  { value: '3', emoji: '😐', label: 'Regular', animation: 'pulse' },
+  { value: '4', emoji: '🙂', label: 'Bom', animation: 'bounce' },
+  { value: '5', emoji: '😍', label: 'Ótimo', animation: 'heart' },
+];
+const ALLOWED_EMOJI_ANIMATIONS = new Set(['shake', 'float', 'pulse', 'bounce', 'heart']);
 const MAX_PENDING = 200;
 
 function randomSecret() {
@@ -168,21 +177,121 @@ function isTransientError(error) {
   return !error?.status || error.status === 408 || error.status >= 500;
 }
 
+function emojiOptions(options) {
+  return DEFAULT_EMOJI_OPTIONS.map((fallback, index) => {
+    const item = Array.isArray(options) ? options[index] : null;
+    return {
+      value: String(index + 1),
+      emoji: String(item?.emoji || (typeof item === 'string' ? item : fallback.emoji)).trim() || fallback.emoji,
+      label: String(item?.label || fallback.label).trim() || fallback.label,
+      animation: ALLOWED_EMOJI_ANIMATIONS.has(item?.animation) ? item.animation : fallback.animation,
+    };
+  });
+}
+
 export async function renderTablet(root) {
   let activeSurvey = null;
   let busy = false;
+  let kioskUnlocked = false;
+  let waitingForPairing = false;
   const browserTestMode = !isNativeRuntime();
 
   if (browserTestMode) {
+    const browserTestType = new URLSearchParams(location.search).get('type') === 'emoji' ? 'emoji' : 'stars';
     renderSurvey({
       id: 'browser-test-survey',
-      questions: [{ id: 'browser-test-question', text: 'Como você avalia sua experiência conosco?', type: 'stars', options: [] }],
+      questions: [{
+        id: 'browser-test-question',
+        text: DEFAULT_RATING_QUESTION,
+        type: browserTestType,
+        options: [],
+      }],
     });
     return;
   }
 
   root.innerHTML = '<main class="tablet-shell"><section class="tablet-card"><p class="tablet-kicker">OPINA AI</p><h1>Preparando este tablet...</h1><p class="tablet-copy">Conectando ao serviço.</p></section></main>';
   const id = await identity();
+  installAdminGesture();
+
+  function nativeRuntimePlugin() {
+    return globalThis.Capacitor?.Plugins?.OpinaRuntime || null;
+  }
+
+  async function configureAdminPin() {
+    const plugin = nativeRuntimePlugin();
+    if (!plugin?.configureAdminPin || !/^\d{4,8}$/.test(id.activation)) return;
+    try { await plugin.configureAdminPin({ pin: id.activation }); } catch { /* pairing can retry later */ }
+  }
+
+  function installAdminGesture() {
+    let timer = null;
+    const cancel = () => {
+      if (timer) clearTimeout(timer);
+      timer = null;
+    };
+    root.addEventListener('touchstart', (event) => {
+      if (event.touches.length < 2 || timer || kioskUnlocked) return;
+      timer = setTimeout(() => {
+        timer = null;
+        showAdminExitDialog();
+      }, 2000);
+    }, { passive: true });
+    root.addEventListener('touchend', (event) => { if (event.touches.length < 2) cancel(); }, { passive: true });
+    root.addEventListener('touchcancel', cancel, { passive: true });
+  }
+
+  async function showAdminExitDialog() {
+    if (root.querySelector('.kiosk-exit-dialog')) return;
+    const plugin = nativeRuntimePlugin();
+    let pinConfigured = true;
+    try { pinConfigured = (await plugin?.getInfo?.())?.adminPinConfigured !== false; } catch { /* use exit mode */ }
+    const dialog = document.createElement('div');
+    dialog.className = 'kiosk-exit-dialog';
+    dialog.innerHTML = `<div class="kiosk-exit-dialog__card" role="dialog" aria-modal="true" aria-labelledby="kiosk-exit-title"><p class="tablet-kicker">ACESSO ADMINISTRATIVO</p><h2 id="kiosk-exit-title">${pinConfigured ? 'Sair do modo quiosque' : 'Configurar acesso administrativo'}</h2><p>${pinConfigured ? 'Digite o PIN administrativo para liberar o tablet.' : 'Crie um PIN de 4 a 8 números. Ele ficará salvo somente neste tablet.'}</p><form>${pinConfigured ? '<label>PIN administrativo<input name="pin" type="password" inputmode="numeric" pattern="[0-9]{4,8}" minlength="4" maxlength="8" autocomplete="off" required></label>' : '<label>Novo PIN<input name="pin" type="password" inputmode="numeric" pattern="[0-9]{4,8}" minlength="4" maxlength="8" autocomplete="new-password" required></label><label>Confirmar PIN<input name="pinConfirm" type="password" inputmode="numeric" pattern="[0-9]{4,8}" minlength="4" maxlength="8" autocomplete="new-password" required></label>'}<p class="kiosk-exit-dialog__error" role="alert" hidden></p><div class="kiosk-exit-dialog__actions"><button class="kiosk-exit-dialog__cancel" type="button">Cancelar</button><button class="kiosk-exit-dialog__submit" type="submit">${pinConfigured ? 'Liberar tablet' : 'Definir e liberar'}</button></div></form></div>`;
+    root.append(dialog);
+    const form = dialog.querySelector('form');
+    const input = form.querySelector('input');
+    const error = dialog.querySelector('.kiosk-exit-dialog__error');
+    dialog.querySelector('.kiosk-exit-dialog__cancel').onclick = () => dialog.remove();
+    form.onsubmit = async (event) => {
+      event.preventDefault();
+      const plugin = nativeRuntimePlugin();
+      if (!plugin?.exitKiosk) return;
+      const submit = form.querySelector('.kiosk-exit-dialog__submit');
+      submit.disabled = true;
+      error.hidden = true;
+      try {
+        const pin = input.value.trim();
+        if (!/^\d{4,8}$/.test(pin)) throw new Error('admin_pin_invalid');
+        if (!pinConfigured) {
+          if (pin !== form.querySelector('[name=pinConfirm]').value.trim()) throw new Error('admin_pin_mismatch');
+          await plugin.configureAdminPin({ pin });
+        }
+        await plugin.exitKiosk({ pin });
+        kioskUnlocked = true;
+        dialog.remove();
+        renderAdminUnlocked();
+      } catch (unlockError) {
+        error.textContent = unlockError?.message === 'admin_pin_mismatch' ? 'Os PINs não conferem.' : unlockError?.message === 'admin_pin_not_configured' ? 'Pareie o tablet no painel antes de sair do modo quiosque.' : 'PIN inválido.';
+        error.hidden = false;
+        submit.disabled = false;
+        input.select();
+      }
+    };
+    input.focus();
+  }
+
+  function renderAdminUnlocked() {
+    root.innerHTML = '<main class="tablet-shell"><section class="tablet-card kiosk-unlocked-card"><p class="tablet-kicker">ACESSO ADMINISTRATIVO</p><h1>Tablet liberado</h1><p class="tablet-copy">O modo quiosque foi desativado temporariamente. Faça os ajustes necessários e bloqueie novamente antes de devolver o tablet ao atendimento.</p><button class="kiosk-reenter-button" type="button">Voltar ao modo quiosque</button></section></main>';
+    root.querySelector('.kiosk-reenter-button').onclick = async () => {
+      try { await nativeRuntimePlugin()?.reenterKiosk?.(); } finally {
+        kioskUnlocked = false;
+        if (activeSurvey) renderSurvey(activeSurvey);
+        else await refreshConfig();
+      }
+    };
+  }
 
   async function register() {
     ensureActivation(id);
@@ -216,31 +325,33 @@ export async function renderTablet(root) {
   function renderSurvey(survey) {
     activeSurvey = survey;
     const questions = Array.isArray(survey.questions) ? survey.questions : [];
-    const starConfirmation = questions.length === 1 && questions[0]?.type === 'stars';
-    const quickSubmit = questions.length === 1 && !starConfirmation;
-    root.innerHTML = `<main class="tablet-shell"><section class="survey-kiosk"><header><p class="tablet-kicker">SUA OPINIÃO IMPORTA</p>${browserTestMode ? '<p class="browser-test-badge">MODO DE TESTE · NENHUMA RESPOSTA É ENVIADA</p>' : ''}</header><form id="kiosk-form" data-quick-submit="${quickSubmit}">${questions.map(renderQuestion).join('')}${quickSubmit || starConfirmation ? '' : '<button class="kiosk-submit" type="submit">Enviar avaliação</button>'}</form><footer>Opina AI · Pesquisa de satisfação</footer></section></main>`;
+    const ratingConfirmation = questions.length === 1 && ['emoji', 'stars'].includes(questions[0]?.type);
+    const quickSubmit = questions.length === 1 && !ratingConfirmation;
+    root.innerHTML = `<main class="tablet-shell"><section class="survey-kiosk"><header><p class="tablet-kicker">SUA OPINIÃO IMPORTA</p>${browserTestMode ? '<p class="browser-test-badge">MODO DE TESTE · NENHUMA RESPOSTA É ENVIADA</p>' : ''}</header><form id="kiosk-form" data-quick-submit="${quickSubmit}">${questions.map(renderQuestion).join('')}${quickSubmit || ratingConfirmation ? '' : '<button class="kiosk-submit" type="submit">Enviar avaliação</button>'}</form><footer>Opina AI · Pesquisa de satisfação</footer></section></main>`;
     const form = root.querySelector('#kiosk-form');
     form.onsubmit = submitSurvey;
     if (quickSubmit) form.addEventListener('change', submitSurvey);
-    form.querySelectorAll('.stars-grid').forEach((grid) => {
+    form.querySelectorAll('.rating-grid').forEach((grid) => {
       const inputs = [...grid.querySelectorAll('input')];
-      const confirmation = form.querySelector(`[data-stars-confirm="${grid.dataset.starsQuestion}"]`);
+      const confirmation = form.querySelector(`[data-rating-confirm="${grid.dataset.ratingQuestion}"]`);
       inputs.forEach((input) => input.addEventListener('change', () => {
         const selectedValue = Number(input.value);
-        inputs.forEach((item) => item.closest('label')?.classList.toggle('is-filled', Number(item.value) <= selectedValue));
+        if (grid.classList.contains('stars-grid')) {
+          inputs.forEach((item) => item.closest('label')?.classList.toggle('is-filled', Number(item.value) <= selectedValue));
+        }
         if (confirmation) {
           confirmation.hidden = false;
-          confirmation.querySelector('[data-stars-value]').textContent = input.value;
+          confirmation.querySelector('[data-rating-value]').textContent = input.dataset.ratingLabel || input.value;
         }
       }));
-      confirmation?.querySelector('.stars-confirm-button')?.addEventListener('click', () => submitSurvey({ preventDefault() {}, currentTarget: form }));
+      confirmation?.querySelector('.rating-confirm-button')?.addEventListener('click', () => submitSurvey({ preventDefault() {}, currentTarget: form }));
     });
   }
 
   function renderQuestion(question) {
     const name = `q-${question.id}`;
     if (question.type === 'stars') {
-      return `<fieldset class="question"><legend>${escapeHtml(question.text)}</legend><div class="stars-grid" data-stars-question="${name}">${Array.from({ length: 5 }, (_, index) => index + 1).map((value) => `<label><input type="radio" name="${name}" value="${value}" required><span class="star-choice" aria-label="${value} estrela${value === 1 ? '' : 's'}">★</span><small class="star-number">${value}</small></label>`).join('')}</div><div class="stars-confirmation" data-stars-confirm="${name}" hidden><p>Você confirma sua nota? <strong data-stars-value>0</strong></p><button class="stars-confirm-button" type="button">Sim</button></div></fieldset>`;
+      return `<fieldset class="question"><legend>${escapeHtml(question.text)}</legend><div class="rating-grid stars-grid" data-rating-question="${name}">${Array.from({ length: 5 }, (_, index) => index + 1).map((value) => `<label><input type="radio" name="${name}" value="${value}" required><span class="star-choice" aria-label="${value} estrela${value === 1 ? '' : 's'}">★</span><small class="star-number">${value}</small></label>`).join('')}</div><div class="rating-confirmation" data-rating-confirm="${name}" hidden><p>Você confirma sua nota? <strong data-rating-value>0</strong></p><button class="rating-confirm-button" type="button">Sim</button></div></fieldset>`;
     }
     if (question.type === 'scale') {
       return `<fieldset class="question"><legend>${escapeHtml(question.text)}</legend><div class="scale-grid">${Array.from({ length: 10 }, (_, index) => index + 1).map((value) => `<label><input type="radio" name="${name}" value="${value}" required><span>${value}</span></label>`).join('')}</div></fieldset>`;
@@ -248,8 +359,8 @@ export async function renderTablet(root) {
     if (question.type === 'options') {
       return `<fieldset class="question"><legend>${escapeHtml(question.text)}</legend><div class="option-grid">${(question.options || []).map((option) => `<label><input type="radio" name="${name}" value="${escapeHtml(option)}" required><span>${escapeHtml(option)}</span></label>`).join('')}</div></fieldset>`;
     }
-    const faces = [['1', '😡', 'Péssimo'], ['2', '😕', 'Ruim'], ['3', '😐', 'Regular'], ['4', '🙂', 'Bom'], ['5', '😍', 'Ótimo']];
-    return `<fieldset class="question"><legend>${escapeHtml(question.text)}</legend><div class="emoji-grid">${faces.map(([value, emoji, label]) => `<label><input type="radio" name="${name}" value="${value}" required><span class="emoji-face">${emoji}</span><small>${label}</small></label>`).join('')}</div></fieldset>`;
+    const faces = emojiOptions(question.options);
+    return `<fieldset class="question"><legend>${escapeHtml(question.text)}</legend><div class="rating-grid emoji-grid" data-rating-question="${name}">${faces.map(({ value, emoji, label, animation }) => `<label><input type="radio" name="${name}" value="${value}" data-rating-label="${escapeHtml(label)}" required><span class="emoji-face emoji-face--${value} emoji-motion--${animation}" role="img" aria-label="${escapeHtml(label)}"><span class="emoji-glyph">${escapeHtml(emoji)}</span><span class="emoji-spark" aria-hidden="true">✦</span></span><small>${escapeHtml(label)}</small></label>`).join('')}</div><div class="rating-confirmation" data-rating-confirm="${name}" hidden><p>Você confirma sua nota? <strong data-rating-value>0</strong></p><button class="rating-confirm-button" type="button">Sim</button></div></fieldset>`;
   }
 
   async function submitSurvey(event) {
@@ -320,14 +431,20 @@ export async function renderTablet(root) {
   }
 
   async function refreshConfig() {
+    if (kioskUnlocked) return;
     try {
       const config = await deviceRequest(`/api/devices/config?deviceId=${encodeURIComponent(id.deviceId)}&currentConfigVersion=${currentConfigVersion()}`, id);
       if (config.status === 'unpaired') {
         activeSurvey = null;
         ensureActivation(id);
+        waitingForPairing = true;
         await register();
         renderPairing();
         return;
+      }
+      if (waitingForPairing) {
+        await configureAdminPin();
+        waitingForPairing = false;
       }
       localStorage.removeItem(KEYS.activation);
       await flushPending();

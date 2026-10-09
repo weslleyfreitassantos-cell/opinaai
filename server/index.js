@@ -7,27 +7,40 @@ import helmet from 'helmet';
 import cors from 'cors';
 import rateLimit from 'express-rate-limit';
 import path from 'node:path';
-import { createHash, randomInt, timingSafeEqual } from 'node:crypto';
+import { createHash, randomBytes, randomInt, timingSafeEqual } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
-import { readdir, readFile } from 'node:fs/promises';
+import { mkdir, readFile, readdir, rename, unlink, writeFile } from 'node:fs/promises';
 
 const { Pool } = pg;
 const app = express();
 app.set('trust proxy', 1);
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const migrationsDir = path.join(__dirname, 'migrations');
+const logoAssetsDir = process.env.LOGO_ASSETS_DIR || path.join(__dirname, '..', 'uploads');
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL || 'postgres://opina:opina@localhost:5433/opina_ai',
 });
 
 const jwtSecret = process.env.JWT_SECRET || (process.env.NODE_ENV === 'production' ? null : 'dev-only-change-me');
 if (!jwtSecret) throw new Error('JWT_SECRET é obrigatória em produção.');
+const DEFAULT_RATING_QUESTION = 'Como foi a sua experiência?';
+const DEFAULT_EMOJI_OPTIONS = [
+  { value: '1', emoji: '😡', label: 'Péssimo', animation: 'shake' },
+  { value: '2', emoji: '😕', label: 'Ruim', animation: 'float' },
+  { value: '3', emoji: '😐', label: 'Regular', animation: 'pulse' },
+  { value: '4', emoji: '🙂', label: 'Bom', animation: 'bounce' },
+  { value: '5', emoji: '😍', label: 'Ótimo', animation: 'heart' },
+];
+const ALLOWED_EMOJI_ANIMATIONS = new Set(['shake', 'float', 'pulse', 'bounce', 'heart']);
+const allowedCorsOrigins = new Set(
+  String(process.env.CORS_ORIGINS || '').split(',').map((origin) => origin.trim()).filter(Boolean),
+);
 
 app.disable('x-powered-by');
 app.use(helmet());
 app.use(cors({
   origin(origin, callback) {
-    if (!origin || origin === 'capacitor://localhost' || /^https?:\/\/localhost(?::\d+)?$/.test(origin)) {
+    if (!origin || allowedCorsOrigins.has(origin) || origin === 'capacitor://localhost' || /^https?:\/\/localhost(?::\d+)?$/.test(origin)) {
       callback(null, true);
       return;
     }
@@ -36,7 +49,7 @@ app.use(cors({
   methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
 }));
-app.use(express.json({ limit: '64kb' }));
+app.use(express.json({ limit: '768kb' }));
 app.use(express.static(path.join(__dirname, '..', 'dist')));
 
 const loginLimiter = rateLimit({
@@ -91,10 +104,67 @@ function canAccessTenant(req, tenantId) {
   return req.user.role === 'SUPERADMIN' || req.user.tenantId === tenantId;
 }
 
+const MAX_TENANT_LOGO_BYTES = 512 * 1024;
+
+function decodeTenantLogo(data) {
+  if (typeof data !== 'string') return { error: 'Selecione uma imagem PNG, JPEG ou WebP.' };
+  const match = /^data:(image\/(?:png|jpeg|webp));base64,([A-Za-z0-9+/]+={0,2})$/.exec(data);
+  if (!match) return { error: 'Selecione uma imagem PNG, JPEG ou WebP.' };
+
+  const [, mimeType, encoded] = match;
+  const bytes = Buffer.from(encoded, 'base64');
+  if (!bytes.length || bytes.length > MAX_TENANT_LOGO_BYTES) {
+    return { error: 'A logo deve ter no máximo 512 KB.' };
+  }
+  if (bytes.toString('base64') !== encoded) return { error: 'O arquivo da logo está inválido.' };
+
+  const isPng = bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
+  const isJpeg = bytes.subarray(0, 3).equals(Buffer.from([255, 216, 255]));
+  const isWebp = bytes.subarray(0, 4).toString('ascii') === 'RIFF'
+    && bytes.subarray(8, 12).toString('ascii') === 'WEBP';
+  const matchesMime = (mimeType === 'image/png' && isPng)
+    || (mimeType === 'image/jpeg' && isJpeg)
+    || (mimeType === 'image/webp' && isWebp);
+  if (!matchesMime) return { error: 'Não foi possível validar o formato da logo.' };
+
+  const extension = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp' }[mimeType];
+  return { bytes, mimeType, extension };
+}
+
+async function readTenantLogo(tenantId) {
+  const formats = [
+    ['image/webp', 'webp'],
+    ['image/png', 'png'],
+    ['image/jpeg', 'jpg'],
+  ];
+  for (const [mimeType, extension] of formats) {
+    try {
+      const bytes = await readFile(path.join(logoAssetsDir, `tenant-${tenantId}.${extension}`));
+      return { mimeType, bytes };
+    } catch (error) {
+      if (error.code !== 'ENOENT') throw error;
+    }
+  }
+  return null;
+}
+
+async function removeTenantLogoFiles(tenantId, keepExtension = null) {
+  for (const extension of ['webp', 'png', 'jpg']) {
+    if (extension === keepExtension) continue;
+    try {
+      await unlink(path.join(logoAssetsDir, `tenant-${tenantId}.${extension}`));
+    } catch (error) {
+      if (error.code !== 'ENOENT') throw error;
+    }
+  }
+}
+
 function parseDateFilter(value) {
   if (!value) return null;
   const parsed = String(value).trim();
-  return /^\d{4}-\d{2}-\d{2}$/.test(parsed) ? parsed : null;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(parsed)) return null;
+  const date = new Date(`${parsed}T00:00:00.000Z`);
+  return Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== parsed ? null : parsed;
 }
 
 function emptyReportMetrics() {
@@ -120,18 +190,39 @@ function emptyDistribution() {
   ].map(([value, emoji, label]) => ({ value, emoji, label, count: 0 }));
 }
 
+function normalizeEmojiOptions(input) {
+  const source = Array.isArray(input) ? input : [];
+  return DEFAULT_EMOJI_OPTIONS.map((fallback, index) => {
+    const item = source[index];
+    if (typeof item === 'string') {
+      return { ...fallback, emoji: cleanText(item, 16) || fallback.emoji };
+    }
+    return {
+      value: String(index + 1),
+      emoji: cleanText(item?.emoji, 16) || fallback.emoji,
+      label: cleanText(item?.label, 80) || fallback.label,
+      animation: ALLOWED_EMOJI_ANIMATIONS.has(item?.animation) ? item.animation : fallback.animation,
+    };
+  });
+}
+
 function normalizeQuestions(input) {
   const questions = Array.isArray(input) ? input.slice(0, 20) : [];
   const allowedTypes = new Set(['emoji', 'stars', 'scale', 'options']);
-  const normalized = questions.map((question, index) => ({
-    id: asPositiveInt(question?.id),
-    text: cleanText(question?.text, 500),
-    type: allowedTypes.has(question?.type) ? question.type : 'emoji',
-    position: index,
-    options: Array.isArray(question?.options)
-      ? question.options.map((item) => cleanText(item, 120)).filter(Boolean).slice(0, 12)
-      : [],
-  }));
+  const normalized = questions.map((question, index) => {
+    const type = allowedTypes.has(question?.type) ? question.type : 'emoji';
+    return {
+      id: asPositiveInt(question?.id),
+      text: cleanText(question?.text, 500) || (['emoji', 'stars'].includes(type) ? DEFAULT_RATING_QUESTION : ''),
+      type,
+      position: index,
+      options: type === 'emoji'
+        ? normalizeEmojiOptions(question?.options)
+        : Array.isArray(question?.options)
+          ? question.options.map((item) => cleanText(item, 120)).filter(Boolean).slice(0, 12)
+          : [],
+    };
+  });
   if (!normalized.length || normalized.some((question) => !question.text || (question.type === 'options' && question.options.length < 2))) {
     return null;
   }
@@ -262,6 +353,14 @@ function requireSuperadmin(req, res) {
   return true;
 }
 
+function requireManager(req, res) {
+  if (!['SUPERADMIN', 'ADMIN'].includes(req.user.role)) {
+    res.status(403).json({ error: 'Acesso restrito ao administrador.' });
+    return false;
+  }
+  return true;
+}
+
 app.post('/api/auth/login', loginLimiter, asyncRoute(async (req, res) => {
   const email = cleanText(req.body?.email, 180);
   const password = String(req.body?.password || '');
@@ -281,19 +380,74 @@ app.post('/api/auth/login', loginLimiter, asyncRoute(async (req, res) => {
 
 app.get('/api/me', auth, (req, res) => res.json(req.user));
 
+app.post('/api/auth/change-password', auth, asyncRoute(async (req, res) => {
+  const currentPassword = String(req.body?.currentPassword || '');
+  const newPassword = String(req.body?.newPassword || '');
+  if (!currentPassword || newPassword.length < 12) {
+    return res.status(400).json({ error: 'A nova senha precisa ter pelo menos 12 caracteres.' });
+  }
+  const result = await pool.query('SELECT password_hash FROM users WHERE id=$1 AND active=true', [req.user.id]);
+  if (!result.rowCount || !(await bcrypt.compare(currentPassword, result.rows[0].password_hash))) {
+    return res.status(401).json({ error: 'Senha atual inválida.' });
+  }
+  await pool.query('UPDATE users SET password_hash=$1 WHERE id=$2', [await bcrypt.hash(newPassword, 12), req.user.id]);
+  res.json({ ok: true });
+}));
+
 app.get('/api/tenants', auth, async (req, res) => {
   if (!requireSuperadmin(req, res)) return;
   const result = await pool.query('SELECT id,name,created_at FROM tenants ORDER BY name');
   res.json(result.rows);
 });
 
+app.get('/api/tenant/branding', auth, asyncRoute(async (req, res) => {
+  const tenantId = tenantForUser(req, req.query.tenantId);
+  if (!tenantId) return res.status(400).json({ error: 'Selecione uma empresa.' });
+  if (!canAccessTenant(req, tenantId)) return res.sendStatus(403);
+
+  const result = await pool.query('SELECT id,name FROM tenants WHERE id=$1', [tenantId]);
+  if (!result.rowCount) return res.status(404).json({ error: 'Empresa não encontrada.' });
+
+  const tenant = result.rows[0];
+  const logo = await readTenantLogo(tenantId);
+  const logoData = logo ? `data:${logo.mimeType};base64,${logo.bytes.toString('base64')}` : null;
+  res.json({ id: tenant.id, name: tenant.name, logoData });
+}));
+
+app.put('/api/tenant/branding', auth, asyncRoute(async (req, res) => {
+  if (!requireManager(req, res)) return;
+  const tenantId = tenantForUser(req, req.body?.tenantId);
+  if (!tenantId) return res.status(400).json({ error: 'Selecione uma empresa.' });
+  if (!canAccessTenant(req, tenantId)) return res.sendStatus(403);
+  if (!(await tenantExists(tenantId))) return res.status(404).json({ error: 'Empresa não encontrada.' });
+
+  if (req.body?.logoData === null || req.body?.logoData === '') {
+    await removeTenantLogoFiles(tenantId);
+    return res.json({ ok: true, logoData: null });
+  }
+
+  const logo = decodeTenantLogo(req.body?.logoData);
+  if (logo.error) return res.status(400).json({ error: logo.error });
+  const filename = `tenant-${tenantId}.${logo.extension}`;
+  const targetPath = path.join(logoAssetsDir, filename);
+  const temporaryPath = path.join(logoAssetsDir, `.${filename}.${randomBytes(8).toString('hex')}.tmp`);
+  try {
+    await writeFile(temporaryPath, logo.bytes, { flag: 'wx', mode: 0o644 });
+    await rename(temporaryPath, targetPath);
+  } finally {
+    await unlink(temporaryPath).catch((error) => { if (error.code !== 'ENOENT') throw error; });
+  }
+  await removeTenantLogoFiles(tenantId, logo.extension);
+  res.json({ ok: true });
+}));
+
 app.post('/api/tenants', auth, asyncRoute(async (req, res) => {
   if (!requireSuperadmin(req, res)) return;
   const name = cleanText(req.body?.name, 160);
   const email = cleanText(req.body?.email, 180);
   const password = String(req.body?.password || '');
-  if (!name || !email || password.length < 8) {
-    return res.status(400).json({ error: 'Informe empresa, e-mail e senha com pelo menos 8 caracteres.' });
+  if (!name || !email || password.length < 12) {
+    return res.status(400).json({ error: 'Informe empresa, e-mail e senha com pelo menos 12 caracteres.' });
   }
 
   const client = await pool.connect();
@@ -344,6 +498,7 @@ app.get('/api/surveys/:id', auth, asyncRoute(async (req, res) => {
 }));
 
 app.post('/api/surveys', auth, async (req, res) => {
+  if (!requireManager(req, res)) return;
   const tenantId = tenantForUser(req, req.body?.tenantId);
   const title = cleanText(req.body?.title, 200);
   const description = cleanText(req.body?.description, 1000);
@@ -376,6 +531,7 @@ app.post('/api/surveys', auth, async (req, res) => {
 });
 
 app.patch('/api/surveys/:id', auth, asyncRoute(async (req, res) => {
+  if (!requireManager(req, res)) return;
   const surveyId = asPositiveInt(req.params.id);
   if (!surveyId) return res.status(400).json({ error: 'Pesquisa inválida.' });
   const existing = await pool.query('SELECT id,tenant_id FROM surveys WHERE id=$1', [surveyId]);
@@ -496,13 +652,16 @@ app.get('/api/reports', auth, asyncRoute(async (req, res) => {
     dissatisfiedCount: Number(row.dissatisfied_count || 0),
     dissatisfiedRate: total ? Number(((Number(row.dissatisfied_count || 0) / total) * 100).toFixed(1)) : 0,
   };
-  const distribution = [
-    ['1', '😡', 'Péssimo', row.very_dissatisfied_count],
-    ['2', '😕', 'Ruim', row.dissatisfied_low_count],
-    ['3', '😐', 'Regular', row.neutral_distribution_count],
-    ['4', '🙂', 'Bom', row.satisfied_low_count],
-    ['5', '😍', 'Ótimo', row.satisfied_high_count],
-  ].map(([value, emoji, label, count]) => ({ value, emoji, label, count: Number(count || 0) }));
+  let distributionOptions = DEFAULT_EMOJI_OPTIONS;
+  if (surveyId) {
+    const configured = await pool.query(
+      'SELECT options FROM questions WHERE survey_id=$1 AND type=$2 ORDER BY position,id LIMIT 1',
+      [surveyId, 'emoji'],
+    );
+    if (configured.rowCount) distributionOptions = normalizeEmojiOptions(configured.rows[0].options);
+  }
+  const counts = [row.very_dissatisfied_count, row.dissatisfied_low_count, row.neutral_distribution_count, row.satisfied_low_count, row.satisfied_high_count];
+  const distribution = distributionOptions.map((option, index) => ({ ...option, count: Number(counts[index] || 0) }));
   res.json({ filters: { tenantId, from, to, surveyId, locationId, deviceId }, metrics, distribution, rows: rows.rows });
 }));
 
@@ -552,6 +711,7 @@ app.post('/api/devices/register', pairingLimiter, asyncRoute(async (req, res) =>
 }));
 
 app.post('/api/devices/pair', pairingLimiter, auth, asyncRoute(async (req, res) => {
+  if (!requireManager(req, res)) return;
   const activationCode = cleanText(req.body?.activationCode, 6);
   const tenantId = tenantForUser(req, req.body?.tenantId);
   const locationName = cleanText(req.body?.locationName || 'Recepção', 160);
@@ -641,6 +801,7 @@ async function loadManagedDevice(req, res, deviceId) {
 }
 
 app.patch('/api/devices/:id', auth, asyncRoute(async (req, res) => {
+  if (!requireManager(req, res)) return;
   const deviceId = asPositiveInt(req.params.id);
   if (!deviceId) return res.status(400).json({ error: 'Tablet inválido.' });
   const device = await loadManagedDevice(req, res, deviceId);
@@ -681,6 +842,7 @@ app.patch('/api/devices/:id', auth, asyncRoute(async (req, res) => {
 }));
 
 app.post('/api/devices/:id/refresh-config', auth, asyncRoute(async (req, res) => {
+  if (!requireManager(req, res)) return;
   const deviceId = asPositiveInt(req.params.id);
   const device = await loadManagedDevice(req, res, deviceId);
   if (!device) return;
@@ -692,6 +854,7 @@ app.post('/api/devices/:id/refresh-config', auth, asyncRoute(async (req, res) =>
 }));
 
 app.post('/api/devices/:id/remove-survey', auth, asyncRoute(async (req, res) => {
+  if (!requireManager(req, res)) return;
   const deviceId = asPositiveInt(req.params.id);
   const device = await loadManagedDevice(req, res, deviceId);
   if (!device) return;
@@ -700,6 +863,7 @@ app.post('/api/devices/:id/remove-survey', auth, asyncRoute(async (req, res) => 
 }));
 
 app.post('/api/devices/:id/unpair', auth, asyncRoute(async (req, res) => {
+  if (!requireManager(req, res)) return;
   const deviceId = asPositiveInt(req.params.id);
   const device = await loadManagedDevice(req, res, deviceId);
   if (!device) return;
@@ -714,6 +878,7 @@ app.post('/api/devices/:id/unpair', auth, asyncRoute(async (req, res) => {
 }));
 
 app.delete('/api/devices/:id', auth, asyncRoute(async (req, res) => {
+  if (!requireManager(req, res)) return;
   const deviceId = asPositiveInt(req.params.id);
   const device = await loadManagedDevice(req, res, deviceId);
   if (!device) return;
@@ -722,6 +887,7 @@ app.delete('/api/devices/:id', auth, asyncRoute(async (req, res) => {
 }));
 
 app.post('/api/devices/:id/assign-survey', auth, async (req, res) => {
+  if (!requireManager(req, res)) return;
   const deviceId = asPositiveInt(req.params.id);
   const surveyId = asPositiveInt(req.body?.surveyId);
   if (!deviceId || !surveyId) return res.status(400).json({ error: 'Tablet e pesquisa são obrigatórios.' });
@@ -808,6 +974,7 @@ app.post('/api/devices/responses', deviceAuth, async (req, res) => {
     return res.status(400).json({ error: 'invalid_response' });
   }
   if (!req.device.tenant_id) return res.status(409).json({ error: 'device_not_paired' });
+  if (cleanText(req.body?.deviceId, 80) !== req.device.device_id) return res.status(400).json({ error: 'invalid_device' });
   if (!req.device.active_survey_id || req.device.active_survey_id !== surveyId) {
     return res.status(409).json({ error: 'survey_not_assigned_to_device' });
   }
@@ -871,7 +1038,10 @@ app.use((error, _req, res, _next) => {
 
 runMigrations()
   .then(bootstrapAdmin)
-  .then(() => app.listen(process.env.PORT || 4000, () => console.log('Opina API em http://localhost:4000')))
+  .then(async () => {
+    await mkdir(logoAssetsDir, { recursive: true });
+    app.listen(process.env.PORT || 4000, () => console.log('Opina API em http://localhost:4000'));
+  })
   .catch((error) => {
     console.error(error);
     process.exit(1);

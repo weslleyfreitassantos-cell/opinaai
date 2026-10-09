@@ -1,0 +1,36 @@
+name: Android release
+
+on:
+  workflow_dispatch:
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - run: npm ci
+      - name: Restore Android signing key
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > android/opinaai-release.jks
+      - name: Build signed APK
+        env:
+          OPINA_KEYSTORE_PATH: opinaai-release.jks
+          OPINA_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          OPINA_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          OPINA_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          OPINA_VERSION_CODE: ${{ vars.OPINA_VERSION_CODE || '3' }}
+          OPINA_VERSION_NAME: ${{ vars.OPINA_VERSION_NAME || '1.2.0' }}
+        run: npm run android:release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: opinaai-release-apk
+          path: android/app/build/outputs/apk/release/app-release.apk
