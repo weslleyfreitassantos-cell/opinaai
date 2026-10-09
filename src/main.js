@@ -50,9 +50,9 @@ function readEmojiOptions(source, prefix = 'rating') {
   }));
 }
 
-function renderEmojiCustomizationFields(options = DEFAULT_EMOJI_OPTIONS, prefix = 'rating', legend = 'Personalizar carinhas animadas') {
+function renderEmojiCustomizationFields(options = DEFAULT_EMOJI_OPTIONS, prefix = 'rating', legend = 'Personalizar carinhas animadas', className = '') {
   const normalized = normalizeEmojiOptions(options);
-  return `<fieldset class="emoji-customizer emoji-config-field"><legend>${escapeHtml(legend)}</legend><p class="emoji-customizer__hint">Escolha o emoji, o nome e o movimento de cada nota.</p><div class="emoji-customizer__grid">${normalized.map((item, index) => `<div class="emoji-customizer__row"><span class="emoji-customizer__score">${index + 1}</span><input name="${prefix}-emoji-${index}" value="${escapeHtml(item.emoji)}" maxlength="8" aria-label="Emoji da nota ${index + 1}"><input name="${prefix}-label-${index}" value="${escapeHtml(item.label)}" maxlength="40" aria-label="Rótulo da nota ${index + 1}"><select name="${prefix}-animation-${index}" aria-label="Animação da nota ${index + 1}">${EMOJI_ANIMATION_OPTIONS.map((animation) => `<option value="${animation.value}" ${animation.value === item.animation ? 'selected' : ''}>${animation.label}</option>`).join('')}</select></div>`).join('')}</div></fieldset>`;
+  return `<fieldset class="emoji-customizer emoji-config-field ${className}"><legend>${escapeHtml(legend)}</legend><p class="emoji-customizer__hint">Escolha o emoji, o nome e o movimento de cada nota.</p><div class="emoji-customizer__grid">${normalized.map((item, index) => `<div class="emoji-customizer__row"><span class="emoji-customizer__score">${index + 1}</span><input name="${prefix}-emoji-${index}" value="${escapeHtml(item.emoji)}" maxlength="8" aria-label="Emoji da nota ${index + 1}"><input name="${prefix}-label-${index}" value="${escapeHtml(item.label)}" maxlength="40" aria-label="Rótulo da nota ${index + 1}"><select name="${prefix}-animation-${index}" aria-label="Animação da nota ${index + 1}">${EMOJI_ANIMATION_OPTIONS.map((animation) => `<option value="${animation.value}" ${animation.value === item.animation ? 'selected' : ''}>${animation.label}</option>`).join('')}</select></div>`).join('')}</div></fieldset>`;
 }
 
 function authToken() {
@@ -169,15 +169,20 @@ async function prepareTenantImage(file, kind) {
 function openDialog({ title, description = '', fields = [], submitLabel = 'Salvar', destructive = false }) {
   const dialog = document.createElement('dialog');
   dialog.className = 'app-dialog';
-  const renderField = (field) => field.type === 'emoji-config'
-    ? renderEmojiCustomizationFields(field.value, field.name, field.label || 'Personalizar carinhas animadas')
+  if (fields.some((field) => field.name === 'emoji-config')) dialog.classList.add('app-dialog--survey');
+  const renderField = (field) => {
+    const fieldName = String(field.name || 'field').replace(/[^a-z0-9_-]/gi, '');
+    const fieldClass = `app-dialog__field app-dialog__field--${fieldName}`;
+    return field.type === 'emoji-config'
+    ? renderEmojiCustomizationFields(field.value, field.name, field.label || 'Personalizar carinhas animadas', fieldClass)
     : field.type === 'select'
-      ? `<label>${escapeHtml(field.label)}<select name="${escapeHtml(field.name)}" required>${field.options.map((option) => `<option value="${escapeHtml(option.value)}" ${String(option.value) === String(field.value) ? 'selected' : ''}>${escapeHtml(option.label)}</option>`).join('')}</select></label>`
+      ? `<label class="${fieldClass}">${escapeHtml(field.label)}<select name="${escapeHtml(field.name)}" required>${field.options.map((option) => `<option value="${escapeHtml(option.value)}" ${String(option.value) === String(field.value) ? 'selected' : ''}>${escapeHtml(option.label)}</option>`).join('')}</select></label>`
       : field.type === 'file'
-        ? `<label>${escapeHtml(field.label)}${field.previewSrc ? `<span class="dialog-file-preview"><img src="${escapeHtml(field.previewSrc)}" alt="Imagem atual"></span>` : ''}${field.hint ? `<small>${escapeHtml(field.hint)}</small>` : ''}<input name="${escapeHtml(field.name)}" type="file" accept="${escapeHtml(field.accept || '')}" ${field.required === false ? '' : 'required'}></label>`
+        ? `<label class="${fieldClass}">${escapeHtml(field.label)}${field.previewSrc ? `<span class="dialog-file-preview"><img src="${escapeHtml(field.previewSrc)}" alt="Imagem atual"></span>` : ''}${field.hint ? `<small>${escapeHtml(field.hint)}</small>` : ''}<input name="${escapeHtml(field.name)}" type="file" accept="${escapeHtml(field.accept || '')}" ${field.required === false ? '' : 'required'}></label>`
         : field.type === 'checkbox'
-          ? `<label class="app-dialog__checkbox" ${field.hidden ? 'hidden' : ''}><input name="${escapeHtml(field.name)}" type="checkbox" value="true" ${field.checked ? 'checked' : ''}><span>${escapeHtml(field.label)}</span></label>`
-      : `<label>${escapeHtml(field.label)}<input name="${escapeHtml(field.name)}" type="${field.type || 'text'}" value="${escapeHtml(field.value || '')}" ${field.minLength ? `minlength="${field.minLength}"` : ''} ${field.maxLength ? `maxlength="${field.maxLength}"` : ''} ${field.min !== undefined ? `min="${escapeHtml(field.min)}"` : ''} ${field.max !== undefined ? `max="${escapeHtml(field.max)}"` : ''} ${field.required === false ? '' : 'required'}></label>`;
+          ? `<label class="app-dialog__checkbox ${fieldClass}" ${field.hidden ? 'hidden' : ''}><input name="${escapeHtml(field.name)}" type="checkbox" value="true" ${field.checked ? 'checked' : ''}><span>${escapeHtml(field.label)}</span></label>`
+      : `<label class="${fieldClass}">${escapeHtml(field.label)}<input name="${escapeHtml(field.name)}" type="${field.type || 'text'}" value="${escapeHtml(field.value || '')}" ${field.minLength ? `minlength="${field.minLength}"` : ''} ${field.maxLength ? `maxlength="${field.maxLength}"` : ''} ${field.min !== undefined ? `min="${field.min}"` : ''} ${field.max !== undefined ? `max="${field.max}"` : ''} ${field.required === false ? '' : 'required'}></label>`;
+  };
   dialog.innerHTML = `<form method="dialog" class="app-dialog__form"><div class="app-dialog__header"><div><p class="section-kicker">OPINA AI</p><h2>${escapeHtml(title)}</h2>${description ? `<p>${escapeHtml(description)}</p>` : ''}</div><button type="button" class="app-dialog__close" aria-label="Fechar">×</button></div><div class="app-dialog__fields">${fields.map(renderField).join('')}</div><div class="app-dialog__actions"><button type="button" class="outline-button app-dialog__cancel">Cancelar</button><button type="submit" class="submit-button compact ${destructive ? 'danger-button' : ''}">${escapeHtml(submitLabel)}</button></div></form>`;
   document.body.appendChild(dialog);
   const dialogType = dialog.querySelector('select[name="type"]');
@@ -988,8 +993,8 @@ async function renderDashboard(root, user) {
               { value: 'scale', label: 'Nota de 1 a 10' },
               { value: 'options', label: 'Opções personalizadas' },
             ] },
-            { name: 'emoji-config', label: 'Personalizar carinhas animadas', value: normalizeEmojiOptions(question?.options), type: 'emoji-config' },
             { name: 'options', label: 'Opções separadas por vírgula', value: (question?.options || []).join(', '), required: false },
+            { name: 'emoji-config', label: 'Personalizar carinhas animadas', value: normalizeEmojiOptions(question?.options), type: 'emoji-config' },
             { name: 'logoFile', label: 'Logo desta pesquisa', type: 'file', accept: 'image/png,image/jpeg,image/webp', required: false, previewSrc: survey.branding?.logoData, hint: survey.brandingOverrides?.logo ? 'Logo personalizada atual. Selecione outra para substituir.' : 'Esta pesquisa ainda não tem logo própria. Selecione uma para exibir no tablet.' },
             { name: 'removeLogo', label: 'Remover logo personalizada', type: 'checkbox', hidden: !survey.brandingOverrides?.logo },
             { name: 'backgroundFile', label: 'Plano de fundo desta pesquisa', type: 'file', accept: 'image/png,image/jpeg,image/webp', required: false, previewSrc: survey.branding?.backgroundData, hint: survey.brandingOverrides?.background ? 'Fundo personalizado atual. Selecione outra imagem para substituir.' : 'Esta pesquisa ainda não tem fundo próprio. Selecione uma imagem para o tablet.' },
