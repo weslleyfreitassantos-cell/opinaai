@@ -507,7 +507,8 @@ export async function renderTablet(root) {
   async function refreshConfig() {
     if (kioskUnlocked) return;
     try {
-      const config = await deviceRequest(`/api/devices/config?deviceId=${encodeURIComponent(id.deviceId)}&currentConfigVersion=${currentConfigVersion()}`, id);
+      const previousConfigVersion = currentConfigVersion();
+      const config = await deviceRequest(`/api/devices/config?deviceId=${encodeURIComponent(id.deviceId)}&currentConfigVersion=${previousConfigVersion}`, id);
       if (config.status === 'unpaired') {
         activeSurvey = null;
         ensureActivation(id);
@@ -531,7 +532,8 @@ export async function renderTablet(root) {
       }
       if (!config.survey) { activeSurvey = null; renderWaiting(config.deviceName); return; }
       saveSurveyCache(config.survey, config.configVersion);
-      if (!activeSurvey || activeSurvey.id !== config.survey.id || !root.querySelector('#kiosk-form')) renderSurvey(config.survey);
+      const configChanged = Number(config.configVersion) !== previousConfigVersion;
+      if (!activeSurvey || activeSurvey.id !== config.survey.id || !root.querySelector('#kiosk-form') || configChanged) renderSurvey(config.survey);
     } catch {
       const cached = cachedSurvey();
       if (!activeSurvey && cached) renderSurvey(cached);
