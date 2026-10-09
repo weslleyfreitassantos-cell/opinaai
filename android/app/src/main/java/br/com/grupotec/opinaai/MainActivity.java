@@ -102,18 +102,19 @@ public class MainActivity extends BridgeActivity {
 
     private void enableKioskMode() {
         if (kioskExitRequested) return;
-        kioskModeActive = true;
+        kioskModeActive = false;
         DevicePolicyManager policy = (DevicePolicyManager) getSystemService(Context.DEVICE_POLICY_SERVICE);
         ComponentName admin = new ComponentName(this, OpinaDeviceAdminReceiver.class);
-        if (policy != null && policy.isDeviceOwnerApp(getPackageName())) {
-            policy.setLockTaskPackages(admin, new String[]{getPackageName()});
-        }
+        // On unmanaged installs startLockTask() invokes Android screen pinning,
+        // which leaves a persistent system exit affordance on screen. Use only
+        // immersive fullscreen there; Device Owner deployments get true Lock Task.
+        if (policy == null || !policy.isDeviceOwnerApp(getPackageName())) return;
         try {
-            // A Device Owner externa pode negar o Lock Task completo. Nesse caso,
-            // startLockTask() ainda permite a fixação de tela para QA em tablets de teste.
+            policy.setLockTaskPackages(admin, new String[]{getPackageName()});
             if (!isInLockTaskMode()) startLockTask();
+            kioskModeActive = isInLockTaskMode();
         } catch (SecurityException | IllegalStateException ignored) {
-            // The current device owner may revoke kiosk permission while the app is running.
+            // If device-owner policy blocks Lock Task, remain in immersive fullscreen.
         }
     }
 

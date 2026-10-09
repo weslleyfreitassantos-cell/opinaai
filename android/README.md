@@ -19,7 +19,9 @@ The package is `br.com.grupotec.opinaai`. The main activity is portrait-locked, 
 
 ## Administrative kiosk exit
 
-Like the QR kiosk, press two fingers anywhere on the tablet for two seconds to open the administrative exit. Enter the PIN to release the tablet temporarily; the first successful pairing uses that tablet's six-digit pairing code as the local PIN. The PIN hash stays on the device, so the exit flow does not depend on internet access. Use **Voltar ao modo quiosque** when finished.
+Press two fingers anywhere on the tablet for two seconds to open the administrative exit. Enter the PIN to release the tablet temporarily; the first successful pairing uses that tablet's six-digit pairing code as the local PIN. The PIN hash stays on the device, so the exit flow does not depend on internet access. Use **Voltar ao modo quiosque** when finished.
+
+The app uses Android Lock Task only when it is provisioned as Device Owner. Unmanaged installs remain immersive fullscreen without starting screen pinning, so Android does not show its persistent screen-pinning exit indicator. Full device lockdown requires Device Owner provisioning.
 
 ## Future managed deployment
 

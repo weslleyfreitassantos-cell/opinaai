@@ -113,7 +113,7 @@ async function api(path, options = {}) {
   return data;
 }
 
-async function prepareTenantLogo(file) {
+async function prepareTenantImage(file, kind) {
   const allowedTypes = new Set(['image/png', 'image/jpeg', 'image/webp']);
   if (!allowedTypes.has(file.type)) throw new Error('Escolha uma imagem PNG, JPEG ou WebP.');
   if (file.size > 15 * 1024 * 1024) throw new Error('A imagem original deve ter no máximo 15 MB.');
@@ -129,7 +129,9 @@ async function prepareTenantLogo(file) {
     const canvas = document.createElement('canvas');
     const context = canvas.getContext('2d');
     if (!context) throw new Error('Não foi possível preparar a imagem.');
-    let scale = Math.min(1, 1600 / bitmap.width, 700 / bitmap.height);
+    const maxWidth = kind === 'background' ? 1920 : 1600;
+    const maxHeight = kind === 'background' ? 1280 : 700;
+    let scale = Math.min(1, maxWidth / bitmap.width, maxHeight / bitmap.height);
 
     for (let attempt = 0; attempt < 8; attempt += 1) {
       canvas.width = Math.max(1, Math.round(bitmap.width * scale));
@@ -357,7 +359,8 @@ async function renderDashboard(root, user) {
             </div>
             <div class="section-heading__action"><span id="report-total" class="section-counter">Carregando...</span><button id="print-report" class="outline-button report-print-button" type="button"><span aria-hidden="true">${dashboardIcon('printer')}</span>Imprimir relatório</button></div>
           </div>
-          ${['SUPERADMIN', 'ADMIN'].includes(user.role) ? `<article id="report-branding-controls" class="dashboard-card report-branding-controls"><div class="report-logo-preview"><img id="tenant-logo-preview" alt="Prévia da logo da empresa" hidden><span id="tenant-logo-placeholder" aria-hidden="true">${dashboardIcon('spark')}</span></div><div class="report-branding-copy"><strong>Logo da empresa</strong><small id="tenant-logo-hint">PNG, JPEG ou WebP. Será exibida no cabeçalho do relatório impresso.</small><p id="tenant-logo-message" role="status" aria-live="polite"></p></div><div class="report-branding-actions"><label class="outline-button report-logo-select">Selecionar logo<input id="tenant-logo-input" type="file" accept="image/png,image/jpeg,image/webp"></label><button id="remove-tenant-logo" class="outline-button" type="button" disabled>Remover</button></div></article>` : ''}
+          ${['SUPERADMIN', 'ADMIN'].includes(user.role) ? `<article id="report-branding-controls" class="dashboard-card report-branding-controls"><div class="report-branding-item"><div class="report-logo-preview"><img id="tenant-logo-preview" alt="Prévia da logo da empresa" hidden><span id="tenant-logo-placeholder" aria-hidden="true">${dashboardIcon('spark')}</span></div><div class="report-branding-copy"><strong>Logo da empresa</strong><small>PNG, JPEG ou WebP. Aparece no relatório impresso e na pesquisa do tablet.</small><p id="tenant-logo-message" role="status" aria-live="polite"></p></div><div class="report-branding-actions"><label class="outline-button report-logo-select">Selecionar logo<input id="tenant-logo-input" type="file" accept="image/png,image/jpeg,image/webp"></label><button id="remove-tenant-logo" class="outline-button" type="button" disabled>Remover</button></div></div><div class="report-branding-item"><div class="report-background-preview"><img id="tenant-background-preview" alt="Prévia do plano de fundo" hidden><span id="tenant-background-placeholder" aria-hidden="true">Imagem</span></div><div class="report-branding-copy"><strong>Plano de fundo</strong><small>Aparece na pesquisa do tablet e ao imprimir o relatório.</small><p id="tenant-background-message" role="status" aria-live="polite"></p></div><div class="report-branding-actions"><label class="outline-button report-logo-select">Selecionar imagem<input id="tenant-background-input" type="file" accept="image/png,image/jpeg,image/webp"></label><button id="remove-tenant-background" class="outline-button" type="button" disabled>Remover</button></div></div></article>` : ''}
+          <img id="report-print-background" class="report-print-background" alt="" hidden>
           <p id="report-print-context" class="report-print-context"></p>
           <div class="dashboard-card report-card"><div class="report-toolbar"><div class="date-row"><label>De <input id="from" type="date"></label><label>Até <input id="to" type="date"></label></div><div class="report-filters"><label>Pesquisa<select id="report-survey"><option value="">Todas</option></select></label><label>Unidade<select id="report-location"><option value="">Todas</option></select></label><label>Tablet<select id="report-device"><option value="">Todos</option></select></div><button id="load-report" class="outline-button" type="button">Atualizar <span aria-hidden="true">↻</span></button></div><div class="report-results"><div class="report-results__header"><h3>Distribuição</h3><span>Respostas por avaliação</span></div><div id="report-distribution" class="distribution-list"></div><div id="report-list" class="report-list"></div></div></div>
         </section>
@@ -489,26 +492,35 @@ async function renderDashboard(root, user) {
     printReportButton.disabled = true;
     try {
       await loadDashboardData();
-      const printLogo = root.querySelector('#report-company-logo');
-      if (printLogo && !printLogo.hidden && printLogo.decode) await printLogo.decode().catch(() => {});
+      const printImages = [root.querySelector('#report-company-logo'), root.querySelector('#report-print-background')];
+      await Promise.all(printImages.filter((image) => image && !image.hidden && image.decode).map((image) => image.decode().catch(() => {})));
       window.print();
     } finally {
       printReportButton.disabled = false;
     }
   };
 
-  const tenantLogoInput = root.querySelector('#tenant-logo-input');
-  const removeTenantLogoButton = root.querySelector('#remove-tenant-logo');
+  const brandingAssets = [
+    { kind: 'logo', field: 'logoData', label: 'logo', inputId: '#tenant-logo-input', removeId: '#remove-tenant-logo', previewId: '#tenant-logo-preview', placeholderId: '#tenant-logo-placeholder', messageId: '#tenant-logo-message' },
+    { kind: 'background', field: 'backgroundData', label: 'imagem de fundo', inputId: '#tenant-background-input', removeId: '#remove-tenant-background', previewId: '#tenant-background-preview', placeholderId: '#tenant-background-placeholder', messageId: '#tenant-background-message' },
+  ].map((asset) => ({
+    ...asset,
+    input: root.querySelector(asset.inputId),
+    removeButton: root.querySelector(asset.removeId),
+    preview: root.querySelector(asset.previewId),
+    placeholder: root.querySelector(asset.placeholderId),
+    message: root.querySelector(asset.messageId),
+  }));
+  const reportPrintBackground = root.querySelector('#report-print-background');
   let brandingTenantId = null;
   let tenantBranding = null;
 
   function applyTenantBranding(branding) {
     const logoData = branding?.logoData || '';
+    const backgroundData = branding?.backgroundData || '';
     const reportIdentity = root.querySelector('.report-print-identity');
     const reportCompanyName = root.querySelector('#report-company-name');
     const reportLogo = root.querySelector('#report-company-logo');
-    const preview = root.querySelector('#tenant-logo-preview');
-    const placeholder = root.querySelector('#tenant-logo-placeholder');
 
     if (reportCompanyName) reportCompanyName.textContent = branding?.name || '';
     if (reportIdentity) reportIdentity.hidden = !branding?.name && !logoData;
@@ -521,18 +533,26 @@ async function renderDashboard(root, user) {
         reportLogo.removeAttribute('src');
       }
     }
-    if (preview) {
-      preview.hidden = !logoData;
-      if (logoData) {
-        preview.src = logoData;
-        preview.alt = branding?.name ? `Prévia da logo de ${branding.name}` : 'Prévia da logo da empresa';
-      } else {
-        preview.removeAttribute('src');
-      }
+    if (reportPrintBackground) {
+      reportPrintBackground.hidden = !backgroundData;
+      if (backgroundData) reportPrintBackground.src = backgroundData;
+      else reportPrintBackground.removeAttribute('src');
     }
-    if (placeholder) placeholder.hidden = Boolean(logoData);
-    if (tenantLogoInput) tenantLogoInput.disabled = !selectedTenantId;
-    if (removeTenantLogoButton) removeTenantLogoButton.disabled = !selectedTenantId || !logoData;
+    for (const asset of brandingAssets) {
+      const imageData = branding?.[asset.field] || '';
+      if (asset.preview) {
+        asset.preview.hidden = !imageData;
+        if (imageData) {
+          asset.preview.src = imageData;
+          asset.preview.alt = asset.kind === 'logo' ? 'Prévia da logo da empresa' : 'Prévia do plano de fundo';
+        } else {
+          asset.preview.removeAttribute('src');
+        }
+      }
+      if (asset.placeholder) asset.placeholder.hidden = Boolean(imageData);
+      if (asset.input) asset.input.disabled = !selectedTenantId;
+      if (asset.removeButton) asset.removeButton.disabled = !selectedTenantId || !imageData;
+    }
   }
 
   async function loadTenantBranding() {
@@ -557,61 +577,62 @@ async function renderDashboard(root, user) {
     applyTenantBranding(branding);
   }
 
-  tenantLogoInput?.addEventListener('change', async (event) => {
-    const file = event.currentTarget.files?.[0];
-    if (!file) return;
-    const tenantId = selectedTenantId;
-    const message = root.querySelector('#tenant-logo-message');
-    const removeButton = root.querySelector('#remove-tenant-logo');
-    tenantLogoInput.disabled = true;
-    if (removeButton) removeButton.disabled = true;
-    message.textContent = 'Preparando logo...';
-    try {
-      const logoData = await prepareTenantLogo(file);
-      message.textContent = 'Salvando logo...';
-      await api('/api/tenant/branding', {
-        method: 'PUT',
-        body: JSON.stringify({ tenantId, logoData }),
-      });
-      if (String(selectedTenantId) === String(tenantId)) {
-        tenantBranding = { ...tenantBranding, id: tenantId, logoData };
-        brandingTenantId = String(tenantId);
-        applyTenantBranding(tenantBranding);
+  for (const asset of brandingAssets) {
+    asset.input?.addEventListener('change', async (event) => {
+      const file = event.currentTarget.files?.[0];
+      if (!file) return;
+      const tenantId = selectedTenantId;
+      asset.input.disabled = true;
+      if (asset.removeButton) asset.removeButton.disabled = true;
+      if (asset.message) asset.message.textContent = `Preparando ${asset.label}...`;
+      try {
+        const imageData = await prepareTenantImage(file, asset.kind);
+        if (asset.message) asset.message.textContent = `Salvando ${asset.label}...`;
+        await api('/api/tenant/branding', {
+          method: 'PUT',
+          body: JSON.stringify({ tenantId, [asset.field]: imageData }),
+        });
+        if (String(selectedTenantId) === String(tenantId)) {
+          tenantBranding = { ...tenantBranding, id: tenantId, [asset.field]: imageData };
+          brandingTenantId = String(tenantId);
+          applyTenantBranding(tenantBranding);
+        }
+        if (asset.message) asset.message.textContent = asset.kind === 'logo'
+          ? 'Logo salva para o relatório e os tablets.'
+          : 'Plano de fundo salvo para o relatório e os tablets.';
+      } catch (error) {
+        if (asset.message) asset.message.textContent = error.message;
+      } finally {
+        asset.input.value = '';
+        asset.input.disabled = !selectedTenantId;
+        if (asset.removeButton) asset.removeButton.disabled = !selectedTenantId || !tenantBranding?.[asset.field];
       }
-      message.textContent = 'Logo salva e adicionada ao relatório.';
-    } catch (error) {
-      message.textContent = error.message;
-    } finally {
-      tenantLogoInput.value = '';
-      tenantLogoInput.disabled = !selectedTenantId;
-      if (removeButton) removeButton.disabled = !selectedTenantId || !tenantBranding?.logoData;
-    }
-  });
+    });
 
-  removeTenantLogoButton?.addEventListener('click', async () => {
-    const tenantId = selectedTenantId;
-    const message = root.querySelector('#tenant-logo-message');
-    removeTenantLogoButton.disabled = true;
-    tenantLogoInput.disabled = true;
-    message.textContent = 'Removendo logo...';
-    try {
-      await api('/api/tenant/branding', {
-        method: 'PUT',
-        body: JSON.stringify({ tenantId, logoData: null }),
-      });
-      if (String(selectedTenantId) === String(tenantId)) {
-        tenantBranding = { ...tenantBranding, id: tenantId, logoData: null };
-        brandingTenantId = String(tenantId);
-        applyTenantBranding(tenantBranding);
+    asset.removeButton?.addEventListener('click', async () => {
+      const tenantId = selectedTenantId;
+      asset.removeButton.disabled = true;
+      if (asset.input) asset.input.disabled = true;
+      if (asset.message) asset.message.textContent = `Removendo ${asset.label}...`;
+      try {
+        await api('/api/tenant/branding', {
+          method: 'PUT',
+          body: JSON.stringify({ tenantId, [asset.field]: null }),
+        });
+        if (String(selectedTenantId) === String(tenantId)) {
+          tenantBranding = { ...tenantBranding, id: tenantId, [asset.field]: null };
+          brandingTenantId = String(tenantId);
+          applyTenantBranding(tenantBranding);
+        }
+        if (asset.message) asset.message.textContent = asset.kind === 'logo' ? 'Logo removida.' : 'Plano de fundo removido.';
+      } catch (error) {
+        if (asset.message) asset.message.textContent = error.message;
+        asset.removeButton.disabled = !tenantBranding?.[asset.field];
+      } finally {
+        if (asset.input) asset.input.disabled = !selectedTenantId;
       }
-      message.textContent = 'Logo removida do relatório.';
-    } catch (error) {
-      message.textContent = error.message;
-      removeTenantLogoButton.disabled = !tenantBranding?.logoData;
-    } finally {
-      tenantLogoInput.disabled = !selectedTenantId;
-    }
-  });
+    });
+  }
 
   async function loadDashboardData() {
     const status = root.querySelector('#dashboard-status');

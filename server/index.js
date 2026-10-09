@@ -104,19 +104,19 @@ function canAccessTenant(req, tenantId) {
   return req.user.role === 'SUPERADMIN' || req.user.tenantId === tenantId;
 }
 
-const MAX_TENANT_LOGO_BYTES = 512 * 1024;
+const MAX_TENANT_IMAGE_BYTES = 512 * 1024;
 
-function decodeTenantLogo(data) {
+function decodeTenantImage(data, label = 'A imagem') {
   if (typeof data !== 'string') return { error: 'Selecione uma imagem PNG, JPEG ou WebP.' };
   const match = /^data:(image\/(?:png|jpeg|webp));base64,([A-Za-z0-9+/]+={0,2})$/.exec(data);
   if (!match) return { error: 'Selecione uma imagem PNG, JPEG ou WebP.' };
 
   const [, mimeType, encoded] = match;
   const bytes = Buffer.from(encoded, 'base64');
-  if (!bytes.length || bytes.length > MAX_TENANT_LOGO_BYTES) {
-    return { error: 'A logo deve ter no máximo 512 KB.' };
+  if (!bytes.length || bytes.length > MAX_TENANT_IMAGE_BYTES) {
+    return { error: `${label} deve ter no máximo 512 KB.` };
   }
-  if (bytes.toString('base64') !== encoded) return { error: 'O arquivo da logo está inválido.' };
+  if (bytes.toString('base64') !== encoded) return { error: `${label} enviada está inválida.` };
 
   const isPng = bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
   const isJpeg = bytes.subarray(0, 3).equals(Buffer.from([255, 216, 255]));
@@ -125,21 +125,26 @@ function decodeTenantLogo(data) {
   const matchesMime = (mimeType === 'image/png' && isPng)
     || (mimeType === 'image/jpeg' && isJpeg)
     || (mimeType === 'image/webp' && isWebp);
-  if (!matchesMime) return { error: 'Não foi possível validar o formato da logo.' };
+  if (!matchesMime) return { error: `Não foi possível validar ${label.toLowerCase()}.` };
 
   const extension = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp' }[mimeType];
   return { bytes, mimeType, extension };
 }
 
-async function readTenantLogo(tenantId) {
-  const formats = [
-    ['image/webp', 'webp'],
-    ['image/png', 'png'],
-    ['image/jpeg', 'jpg'],
-  ];
-  for (const [mimeType, extension] of formats) {
+const tenantImageFormats = [
+  ['image/webp', 'webp'],
+  ['image/png', 'png'],
+  ['image/jpeg', 'jpg'],
+];
+
+function tenantImageFilename(tenantId, kind, extension) {
+  return kind === 'logo' ? `tenant-${tenantId}.${extension}` : `tenant-${tenantId}-${kind}.${extension}`;
+}
+
+async function readTenantImage(tenantId, kind) {
+  for (const [mimeType, extension] of tenantImageFormats) {
     try {
-      const bytes = await readFile(path.join(logoAssetsDir, `tenant-${tenantId}.${extension}`));
+      const bytes = await readFile(path.join(logoAssetsDir, tenantImageFilename(tenantId, kind, extension)));
       return { mimeType, bytes };
     } catch (error) {
       if (error.code !== 'ENOENT') throw error;
@@ -148,11 +153,11 @@ async function readTenantLogo(tenantId) {
   return null;
 }
 
-async function removeTenantLogoFiles(tenantId, keepExtension = null) {
+async function removeTenantImageFiles(tenantId, kind, keepExtension = null) {
   for (const extension of ['webp', 'png', 'jpg']) {
     if (extension === keepExtension) continue;
     try {
-      await unlink(path.join(logoAssetsDir, `tenant-${tenantId}.${extension}`));
+      await unlink(path.join(logoAssetsDir, tenantImageFilename(tenantId, kind, extension)));
     } catch (error) {
       if (error.code !== 'ENOENT') throw error;
     }
@@ -409,9 +414,12 @@ app.get('/api/tenant/branding', auth, asyncRoute(async (req, res) => {
   if (!result.rowCount) return res.status(404).json({ error: 'Empresa não encontrada.' });
 
   const tenant = result.rows[0];
-  const logo = await readTenantLogo(tenantId);
-  const logoData = logo ? `data:${logo.mimeType};base64,${logo.bytes.toString('base64')}` : null;
-  res.json({ id: tenant.id, name: tenant.name, logoData });
+  const [logo, background] = await Promise.all([
+    readTenantImage(tenantId, 'logo'),
+    readTenantImage(tenantId, 'background'),
+  ]);
+  const toDataUrl = (image) => image ? `data:${image.mimeType};base64,${image.bytes.toString('base64')}` : null;
+  res.json({ id: tenant.id, name: tenant.name, logoData: toDataUrl(logo), backgroundData: toDataUrl(background) });
 }));
 
 app.put('/api/tenant/branding', auth, asyncRoute(async (req, res) => {
@@ -421,24 +429,30 @@ app.put('/api/tenant/branding', auth, asyncRoute(async (req, res) => {
   if (!canAccessTenant(req, tenantId)) return res.sendStatus(403);
   if (!(await tenantExists(tenantId))) return res.status(404).json({ error: 'Empresa não encontrada.' });
 
-  if (req.body?.logoData === null || req.body?.logoData === '') {
-    await removeTenantLogoFiles(tenantId);
-    return res.json({ ok: true, logoData: null });
+  const imageField = ['logoData', 'backgroundData'].find((field) => Object.hasOwn(req.body || {}, field));
+  if (!imageField) return res.status(400).json({ error: 'Selecione uma logo ou imagem de fundo.' });
+  const kind = imageField === 'logoData' ? 'logo' : 'background';
+  const label = kind === 'logo' ? 'A logo' : 'A imagem de fundo';
+  if (req.body[imageField] === null || req.body[imageField] === '') {
+    await removeTenantImageFiles(tenantId, kind);
+    await pool.query('UPDATE devices SET config_version=config_version+1,updated_at=now() WHERE tenant_id=$1 AND active=true', [tenantId]);
+    return res.json({ ok: true, [imageField]: null });
   }
 
-  const logo = decodeTenantLogo(req.body?.logoData);
-  if (logo.error) return res.status(400).json({ error: logo.error });
-  const filename = `tenant-${tenantId}.${logo.extension}`;
+  const image = decodeTenantImage(req.body[imageField], label);
+  if (image.error) return res.status(400).json({ error: image.error });
+  const filename = tenantImageFilename(tenantId, kind, image.extension);
   const targetPath = path.join(logoAssetsDir, filename);
   const temporaryPath = path.join(logoAssetsDir, `.${filename}.${randomBytes(8).toString('hex')}.tmp`);
   try {
-    await writeFile(temporaryPath, logo.bytes, { flag: 'wx', mode: 0o644 });
+    await writeFile(temporaryPath, image.bytes, { flag: 'wx', mode: 0o644 });
     await rename(temporaryPath, targetPath);
   } finally {
     await unlink(temporaryPath).catch((error) => { if (error.code !== 'ENOENT') throw error; });
   }
-  await removeTenantLogoFiles(tenantId, logo.extension);
-  res.json({ ok: true });
+  await removeTenantImageFiles(tenantId, kind, image.extension);
+  await pool.query('UPDATE devices SET config_version=config_version+1,updated_at=now() WHERE tenant_id=$1 AND active=true', [tenantId]);
+  res.json({ ok: true, [imageField]: req.body[imageField] });
 }));
 
 app.post('/api/tenants', auth, asyncRoute(async (req, res) => {
@@ -957,12 +971,17 @@ app.get('/api/devices/config', deviceAuth, asyncRoute(async (req, res) => {
     'SELECT id,text,type,position,options FROM questions WHERE survey_id=$1 ORDER BY position,id',
     [survey.rows[0].id],
   );
+  const [logo, background] = await Promise.all([
+    readTenantImage(req.device.tenant_id, 'logo'),
+    readTenantImage(req.device.tenant_id, 'background'),
+  ]);
+  const toDataUrl = (image) => image ? `data:${image.mimeType};base64,${image.bytes.toString('base64')}` : null;
   res.json({
     status: 'paired',
     deviceId: req.device.device_id,
     deviceName: req.device.name,
     configVersion: req.device.config_version,
-    survey: { ...survey.rows[0], questions: questions.rows },
+    survey: { ...survey.rows[0], questions: questions.rows, branding: { logoData: toDataUrl(logo), backgroundData: toDataUrl(background) } },
   });
 }));
 

@@ -13,6 +13,7 @@ body { display:block; min-height:100vh; margin:0; background:#eef5ff; }
 .survey-kiosk { display:flex; flex-direction:column; padding:clamp(36px,5vw,72px); }
 .survey-kiosk header { text-align:center; }
 .survey-kiosk header>p:last-child { margin:18px auto 0; color:#667791; font-size:clamp(18px,2vw,28px); }
+.survey-brand-logo { display:block; width:min(260px,58vw); max-height:100px; margin:0 auto 20px; object-fit:contain; }
 .browser-test-badge { display:inline-block; margin:16px auto 0 !important; padding:8px 14px; border:1px solid #c7ddfa; border-radius:999px; color:#176ee8 !important; background:#eef6ff; font-size:clamp(11px,1.2vw,15px) !important; font-weight:900; letter-spacing:.08em; }
 #kiosk-form { display:flex; flex:1; flex-direction:column; justify-content:center; gap:32px; margin-top:34px; }
 .question { margin:0; padding:0; border:0; text-align:center; }

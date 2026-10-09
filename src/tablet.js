@@ -177,6 +177,18 @@ function isTransientError(error) {
   return !error?.status || error.status === 408 || error.status >= 500;
 }
 
+function safeImageDataUrl(value) {
+  return /^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(String(value || '')) ? value : '';
+}
+
+function applySurveyBackground(element, branding) {
+  const backgroundData = safeImageDataUrl(branding?.backgroundData);
+  if (!element || !backgroundData) return;
+  element.style.backgroundImage = `linear-gradient(rgba(255,255,255,.82),rgba(255,255,255,.82)),url("${backgroundData}")`;
+  element.style.backgroundPosition = 'center';
+  element.style.backgroundSize = 'cover';
+}
+
 function emojiOptions(options) {
   return DEFAULT_EMOJI_OPTIONS.map((fallback, index) => {
     const item = Array.isArray(options) ? options[index] : null;
@@ -327,7 +339,9 @@ export async function renderTablet(root) {
     const questions = Array.isArray(survey.questions) ? survey.questions : [];
     const ratingConfirmation = questions.length === 1 && ['emoji', 'stars'].includes(questions[0]?.type);
     const quickSubmit = questions.length === 1 && !ratingConfirmation;
-    root.innerHTML = `<main class="tablet-shell"><section class="survey-kiosk"><header><p class="tablet-kicker">SUA OPINIÃO IMPORTA</p>${browserTestMode ? '<p class="browser-test-badge">MODO DE TESTE · NENHUMA RESPOSTA É ENVIADA</p>' : ''}</header><form id="kiosk-form" data-quick-submit="${quickSubmit}">${questions.map(renderQuestion).join('')}${quickSubmit || ratingConfirmation ? '' : '<button class="kiosk-submit" type="submit">Enviar avaliação</button>'}</form><footer>Opina AI · Pesquisa de satisfação</footer></section></main>`;
+    const logoData = safeImageDataUrl(survey.branding?.logoData);
+    root.innerHTML = `<main class="tablet-shell"><section class="survey-kiosk"><header>${logoData ? `<img class="survey-brand-logo" src="${escapeHtml(logoData)}" alt="Logo da empresa">` : ''}<p class="tablet-kicker">SUA OPINIÃO IMPORTA</p>${browserTestMode ? '<p class="browser-test-badge">MODO DE TESTE · NENHUMA RESPOSTA É ENVIADA</p>' : ''}</header><form id="kiosk-form" data-quick-submit="${quickSubmit}">${questions.map(renderQuestion).join('')}${quickSubmit || ratingConfirmation ? '' : '<button class="kiosk-submit" type="submit">Enviar avaliação</button>'}</form><footer>Opina AI · Pesquisa de satisfação</footer></section></main>`;
+    applySurveyBackground(root.querySelector('.survey-kiosk'), survey.branding);
     const form = root.querySelector('#kiosk-form');
     form.onsubmit = submitSurvey;
     if (quickSubmit) form.addEventListener('change', submitSurvey);
@@ -413,7 +427,9 @@ export async function renderTablet(root) {
   function renderThanks(queued) {
     const title = browserTestMode ? 'Teste concluído' : 'Obrigado pela sua opinião!';
     const copy = browserTestMode ? 'Nenhuma resposta foi enviada ou salva. Este tablet do navegador serve apenas para testar a experiência.' : (queued ? 'A avaliação ficou salva neste tablet e será sincronizada quando a conexão voltar.' : 'Sua avaliação foi registrada com sucesso.');
-    root.innerHTML = `<main class="tablet-shell"><section class="tablet-card thanks-card"><div class="thanks-icon">✓</div><h1>${title}</h1><p class="tablet-copy">${copy}</p></section></main>`;
+    const logoData = safeImageDataUrl(activeSurvey?.branding?.logoData);
+    root.innerHTML = `<main class="tablet-shell"><section class="tablet-card thanks-card">${logoData ? `<img class="survey-brand-logo" src="${escapeHtml(logoData)}" alt="Logo da empresa">` : ''}<div class="thanks-icon">✓</div><h1>${title}</h1><p class="tablet-copy">${copy}</p></section></main>`;
+    applySurveyBackground(root.querySelector('.thanks-card'), activeSurvey?.branding);
   }
 
   async function flushPending() {
