@@ -49,7 +49,7 @@ app.use(cors({
   methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
 }));
-app.use(express.json({ limit: '768kb' }));
+app.use(express.json({ limit: '2mb' }));
 app.use(express.static(path.join(__dirname, '..', 'dist')));
 
 const loginLimiter = rateLimit({
@@ -146,6 +146,10 @@ function tenantImageFilename(tenantId, kind, extension) {
   return kind === 'logo' ? `tenant-${tenantId}.${extension}` : `tenant-${tenantId}-${kind}.${extension}`;
 }
 
+function surveyImageFilename(surveyId, kind, extension) {
+  return `survey-${surveyId}-${kind}.${extension}`;
+}
+
 async function readTenantImage(tenantId, kind) {
   for (const [mimeType, extension] of tenantImageFormats) {
     try {
@@ -167,6 +171,70 @@ async function removeTenantImageFiles(tenantId, kind, keepExtension = null) {
       if (error.code !== 'ENOENT') throw error;
     }
   }
+}
+
+async function readSurveyImage(surveyId, kind) {
+  for (const [mimeType, extension] of tenantImageFormats) {
+    try {
+      const bytes = await readFile(path.join(logoAssetsDir, surveyImageFilename(surveyId, kind, extension)));
+      return { mimeType, bytes };
+    } catch (error) {
+      if (error.code !== 'ENOENT') throw error;
+    }
+  }
+  return null;
+}
+
+async function removeSurveyImageFiles(surveyId, kind) {
+  for (const extension of ['webp', 'png', 'jpg']) {
+    try {
+      await unlink(path.join(logoAssetsDir, surveyImageFilename(surveyId, kind, extension)));
+    } catch (error) {
+      if (error.code !== 'ENOENT') throw error;
+    }
+  }
+}
+
+async function writeSurveyImage(surveyId, kind, image) {
+  const filename = surveyImageFilename(surveyId, kind, image.extension);
+  const targetPath = path.join(logoAssetsDir, filename);
+  const temporaryPath = path.join(logoAssetsDir, `.${filename}.${randomBytes(8).toString('hex')}.tmp`);
+  try {
+    await writeFile(temporaryPath, image.bytes, { flag: 'wx', mode: 0o644 });
+    await rename(temporaryPath, targetPath);
+  } finally {
+    await unlink(temporaryPath).catch((error) => { if (error.code !== 'ENOENT') throw error; });
+  }
+  await removeSurveyImageFilesExcept(surveyId, kind, image.extension);
+}
+
+async function removeSurveyImageFilesExcept(surveyId, kind, keepExtension) {
+  for (const extension of ['webp', 'png', 'jpg']) {
+    if (extension === keepExtension) continue;
+    try {
+      await unlink(path.join(logoAssetsDir, surveyImageFilename(surveyId, kind, extension)));
+    } catch (error) {
+      if (error.code !== 'ENOENT') throw error;
+    }
+  }
+}
+
+function imageDataUrl(image) {
+  return image ? `data:${image.mimeType};base64,${image.bytes.toString('base64')}` : null;
+}
+
+async function loadSurveyBranding(surveyId) {
+  const [surveyLogo, surveyBackground] = await Promise.all([
+    readSurveyImage(surveyId, 'logo'),
+    readSurveyImage(surveyId, 'background'),
+  ]);
+  return {
+    branding: {
+      logoData: imageDataUrl(surveyLogo),
+      backgroundData: imageDataUrl(surveyBackground),
+    },
+    brandingOverrides: { logo: Boolean(surveyLogo), background: Boolean(surveyBackground) },
+  };
 }
 
 function parseDateFilter(value) {
@@ -406,7 +474,13 @@ app.post('/api/auth/change-password', auth, asyncRoute(async (req, res) => {
 
 app.get('/api/tenants', auth, async (req, res) => {
   if (!requireSuperadmin(req, res)) return;
-  const result = await pool.query('SELECT id,name,created_at FROM tenants ORDER BY name');
+  const result = await pool.query(
+    `SELECT t.id,t.name,t.device_limit AS "deviceLimit",t.created_at,
+            (SELECT COUNT(*)::int FROM devices d WHERE d.tenant_id=t.id AND d.active=true) AS "activeDevices",
+            (SELECT u.email FROM users u WHERE u.tenant_id=t.id AND u.role='ADMIN' AND u.active=true ORDER BY u.id LIMIT 1) AS "adminEmail"
+       FROM tenants t
+      ORDER BY t.name`,
+  );
   res.json(result.rows);
 });
 
@@ -463,22 +537,109 @@ app.put('/api/tenant/branding', auth, asyncRoute(async (req, res) => {
 app.post('/api/tenants', auth, asyncRoute(async (req, res) => {
   if (!requireSuperadmin(req, res)) return;
   const name = cleanText(req.body?.name, 160);
-  const email = cleanText(req.body?.email, 180);
+  const email = cleanText(req.body?.email, 180).toLowerCase();
   const password = String(req.body?.password || '');
-  if (!name || !email || password.length < 8) {
-    return res.status(400).json({ error: 'Informe empresa, e-mail e senha com pelo menos 8 caracteres.' });
+  const deviceLimit = req.body?.deviceLimit === undefined ? 1 : asPositiveInt(req.body.deviceLimit);
+  if (!name || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || password.length < 8 || !deviceLimit || deviceLimit > 10000) {
+    return res.status(400).json({ error: 'Informe empresa, e-mail válido, senha com pelo menos 8 caracteres e limite de 1 a 10.000 tablets.' });
   }
+  const existingEmail = await pool.query('SELECT 1 FROM users WHERE lower(email)=lower($1)', [email]);
+  if (existingEmail.rowCount) return res.status(409).json({ error: 'Este e-mail já está cadastrado.' });
 
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    const tenant = await client.query('INSERT INTO tenants(name) VALUES($1) RETURNING *', [name]);
+    const tenant = await client.query('INSERT INTO tenants(name,device_limit) VALUES($1,$2) RETURNING *', [name, deviceLimit]);
     const user = await client.query(
       'INSERT INTO users(tenant_id,name,email,password_hash,role) VALUES($1,$2,$3,$4,$5) RETURNING id,name,email,role,tenant_id',
       [tenant.rows[0].id, name, email, await bcrypt.hash(password, 12), 'ADMIN'],
     );
     await client.query('COMMIT');
     res.status(201).json({ tenant: tenant.rows[0], user: user.rows[0] });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    if (error.code === '23505') return res.status(409).json({ error: 'Este e-mail já está cadastrado.' });
+    throw error;
+  } finally {
+    client.release();
+  }
+}));
+
+app.patch('/api/tenants/:id', auth, asyncRoute(async (req, res) => {
+  if (!requireSuperadmin(req, res)) return;
+  const tenantId = asPositiveInt(req.params.id);
+  if (!tenantId) return res.status(400).json({ error: 'Empresa inválida.' });
+
+  const hasName = Object.hasOwn(req.body || {}, 'name');
+  const hasLimit = Object.hasOwn(req.body || {}, 'deviceLimit');
+  const hasEmail = Object.hasOwn(req.body || {}, 'adminEmail');
+  const hasPassword = Object.hasOwn(req.body || {}, 'adminPassword');
+  if (!hasName && !hasLimit && !hasEmail && !hasPassword) return res.status(400).json({ error: 'Informe os dados que deseja alterar.' });
+
+  const name = hasName ? cleanText(req.body.name, 160) : null;
+  const deviceLimit = hasLimit ? asPositiveInt(req.body.deviceLimit) : null;
+  const adminEmail = hasEmail ? cleanText(req.body.adminEmail, 180).toLowerCase() : null;
+  const adminPassword = String(req.body?.adminPassword || '');
+  if (hasName && !name) {
+    return res.status(400).json({ error: 'Informe um nome válido para a empresa.' });
+  }
+  if (hasLimit && (!deviceLimit || deviceLimit > 10000)) {
+    return res.status(400).json({ error: 'O limite deve ser de 1 a 10.000 tablets.' });
+  }
+  if (hasEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(adminEmail || '')) {
+    return res.status(400).json({ error: 'Informe um e-mail válido para o administrador.' });
+  }
+  if (hasPassword && adminPassword.length > 0 && adminPassword.length < 8) {
+    return res.status(400).json({ error: 'A senha do administrador precisa ter pelo menos 8 caracteres.' });
+  }
+
+  const passwordHash = adminPassword ? await bcrypt.hash(adminPassword, 12) : null;
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const tenant = await client.query('SELECT id,name FROM tenants WHERE id=$1 FOR UPDATE', [tenantId]);
+    if (!tenant.rowCount) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Empresa não encontrada.' });
+    }
+
+    if (hasName) {
+      await client.query('UPDATE tenants SET name=$1 WHERE id=$2', [name, tenantId]);
+      await client.query(
+        "UPDATE users SET name=$1 WHERE tenant_id=$2 AND role='ADMIN' AND active=true AND name=$3",
+        [name, tenantId, tenant.rows[0].name],
+      );
+    }
+    if (hasLimit) await client.query('UPDATE tenants SET device_limit=$1 WHERE id=$2', [deviceLimit, tenantId]);
+    if (hasEmail || passwordHash) {
+      const admin = await client.query(
+        `SELECT id FROM users
+          WHERE tenant_id=$1 AND role='ADMIN' AND active=true
+          ORDER BY id LIMIT 1 FOR UPDATE`,
+        [tenantId],
+      );
+      if (!admin.rowCount) {
+        await client.query('ROLLBACK');
+        return res.status(404).json({ error: 'Administrador ativo não encontrado para esta empresa.' });
+      }
+      if (adminEmail) {
+        const duplicate = await client.query(
+          'SELECT 1 FROM users WHERE lower(email)=lower($1) AND id<>$2 LIMIT 1',
+          [adminEmail, admin.rows[0].id],
+        );
+        if (duplicate.rowCount) {
+          await client.query('ROLLBACK');
+          return res.status(409).json({ error: 'Este e-mail já está cadastrado.' });
+        }
+      }
+      await client.query(
+        'UPDATE users SET email=COALESCE($1,email),password_hash=COALESCE($2,password_hash) WHERE id=$3',
+        [adminEmail, passwordHash, admin.rows[0].id],
+      );
+    }
+
+    await client.query('COMMIT');
+    res.json({ ok: true });
   } catch (error) {
     await client.query('ROLLBACK');
     if (error.code === '23505') return res.status(409).json({ error: 'Este e-mail já está cadastrado.' });
@@ -513,7 +674,8 @@ app.get('/api/surveys/:id', auth, asyncRoute(async (req, res) => {
   if (!result.rowCount) return res.status(404).json({ error: 'Pesquisa não encontrada.' });
   if (!canAccessTenant(req, result.rows[0].tenant_id)) return res.sendStatus(403);
   const questions = await pool.query('SELECT id,text,type,position,options FROM questions WHERE survey_id=$1 ORDER BY position,id', [surveyId]);
-  res.json({ ...result.rows[0], questions: questions.rows });
+  const branding = await loadSurveyBranding(surveyId);
+  res.json({ ...result.rows[0], questions: questions.rows, ...branding });
 }));
 
 app.post('/api/surveys', auth, async (req, res) => {
@@ -528,29 +690,80 @@ app.post('/api/surveys', auth, async (req, res) => {
   if (!tenantId || !(await tenantExists(tenantId)) || !title || !questions || headerText === null) {
     return res.status(400).json({ error: 'Empresa, título, texto acima da avaliação e ao menos uma pergunta são obrigatórios.' });
   }
+  const surveyImages = [];
+  for (const [field, kind, label] of [['logoData', 'logo', 'A logo'], ['backgroundData', 'background', 'O plano de fundo']]) {
+    const value = req.body?.[field];
+    if (value === undefined || value === null || value === '') continue;
+    const image = decodeTenantImage(value, label);
+    if (image.error) return res.status(400).json({ error: image.error });
+    surveyImages.push({ kind, image });
+  }
 
   const client = await pool.connect();
+  let createdSurveyId = null;
   try {
     await client.query('BEGIN');
     const survey = await client.query(
       'INSERT INTO surveys(tenant_id,title,description,theme) VALUES($1,$2,$3,$4::jsonb) RETURNING *',
       [tenantId, title, description || null, JSON.stringify({ headerText })],
     );
+    createdSurveyId = survey.rows[0].id;
     for (const question of questions) {
       await client.query(
         'INSERT INTO questions(survey_id,text,type,position,options) VALUES($1,$2,$3,$4,$5::jsonb)',
         [survey.rows[0].id, question.text, question.type, question.position, JSON.stringify(question.options)],
       );
     }
+    for (const asset of surveyImages) await writeSurveyImage(createdSurveyId, asset.kind, asset.image);
     await client.query('COMMIT');
     res.status(201).json(survey.rows[0]);
   } catch (error) {
     await client.query('ROLLBACK');
+    if (createdSurveyId) {
+      await Promise.all(['logo', 'background'].map((kind) => removeSurveyImageFiles(createdSurveyId, kind)));
+    }
     throw error;
   } finally {
     client.release();
   }
 });
+
+app.put('/api/surveys/:id/branding', auth, asyncRoute(async (req, res) => {
+  if (!requireManager(req, res)) return;
+  const surveyId = asPositiveInt(req.params.id);
+  if (!surveyId) return res.status(400).json({ error: 'Pesquisa inválida.' });
+  const fields = [['logoData', 'logo', 'A logo'], ['backgroundData', 'background', 'O plano de fundo']]
+    .filter(([field]) => Object.hasOwn(req.body || {}, field));
+  if (!fields.length) return res.status(400).json({ error: 'Selecione uma logo ou um plano de fundo.' });
+
+  const existing = await pool.query('SELECT id,tenant_id FROM surveys WHERE id=$1', [surveyId]);
+  if (!existing.rowCount) return res.status(404).json({ error: 'Pesquisa não encontrada.' });
+  const tenantId = existing.rows[0].tenant_id;
+  if (!canAccessTenant(req, tenantId)) return res.sendStatus(403);
+
+  const assets = [];
+  for (const [field, kind, label] of fields) {
+    const value = req.body[field];
+    if (value === null || value === '') {
+      assets.push({ kind, image: null });
+      continue;
+    }
+    const image = decodeTenantImage(value, label);
+    if (image.error) return res.status(400).json({ error: image.error });
+    assets.push({ kind, image });
+  }
+
+  for (const asset of assets) {
+    if (asset.image) await writeSurveyImage(surveyId, asset.kind, asset.image);
+    else await removeSurveyImageFiles(surveyId, asset.kind);
+  }
+  await pool.query(
+    'UPDATE devices SET config_version=config_version+1,updated_at=now() WHERE tenant_id=$1 AND active_survey_id=$2 AND active=true',
+    [tenantId, surveyId],
+  );
+  const result = await loadSurveyBranding(surveyId);
+  res.json({ ok: true, ...result });
+}));
 
 app.patch('/api/surveys/:id', auth, asyncRoute(async (req, res) => {
   if (!requireManager(req, res)) return;
@@ -761,6 +974,21 @@ app.post('/api/devices/pair', pairingLimiter, auth, asyncRoute(async (req, res) 
       await client.query('ROLLBACK');
       return res.status(404).json({ error: 'Código inválido ou expirado.' });
     }
+    const tenantLimit = await client.query('SELECT device_limit FROM tenants WHERE id=$1 FOR UPDATE', [tenantId]);
+    if (!tenantLimit.rowCount) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Empresa não encontrada.' });
+    }
+    const activeDeviceCount = await client.query(
+      'SELECT COUNT(*)::int AS total FROM devices WHERE tenant_id=$1 AND active=true',
+      [tenantId],
+    );
+    if (activeDeviceCount.rows[0].total >= tenantLimit.rows[0].device_limit) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({
+        error: `Limite de ${tenantLimit.rows[0].device_limit} tablets atingido. Ajuste o limite com o superadministrador.`,
+      });
+    }
     let locationResult = await client.query(
       'SELECT id,name FROM locations WHERE tenant_id=$1 AND lower(name)=lower($2) LIMIT 1',
       [tenantId, locationName],
@@ -815,7 +1043,7 @@ app.get('/api/devices', auth, async (req, res) => {
 });
 
 async function loadManagedDevice(req, res, deviceId) {
-  const result = await pool.query('SELECT id,tenant_id FROM devices WHERE id=$1', [deviceId]);
+  const result = await pool.query('SELECT id,tenant_id,active FROM devices WHERE id=$1', [deviceId]);
   if (!result.rowCount || !result.rows[0].tenant_id) {
     res.status(404).json({ error: 'Tablet não encontrado.' });
     return null;
@@ -842,6 +1070,19 @@ app.patch('/api/devices/:id', auth, asyncRoute(async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
+    if (active === true && !device.active) {
+      const tenantLimit = await client.query('SELECT device_limit FROM tenants WHERE id=$1 FOR UPDATE', [device.tenant_id]);
+      const activeDeviceCount = await client.query(
+        'SELECT COUNT(*)::int AS total FROM devices WHERE tenant_id=$1 AND active=true',
+        [device.tenant_id],
+      );
+      if (activeDeviceCount.rows[0].total >= tenantLimit.rows[0].device_limit) {
+        await client.query('ROLLBACK');
+        return res.status(409).json({
+          error: `Limite de ${tenantLimit.rows[0].device_limit} tablets atingido. Ajuste o limite com o superadministrador.`,
+        });
+      }
+    }
     let locationId = null;
     if (locationName) {
       const location = await client.query(
@@ -984,17 +1225,13 @@ app.get('/api/devices/config', deviceAuth, asyncRoute(async (req, res) => {
     'SELECT id,text,type,position,options FROM questions WHERE survey_id=$1 ORDER BY position,id',
     [survey.rows[0].id],
   );
-  const [logo, background] = await Promise.all([
-    readTenantImage(req.device.tenant_id, 'logo'),
-    readTenantImage(req.device.tenant_id, 'background'),
-  ]);
-  const toDataUrl = (image) => image ? `data:${image.mimeType};base64,${image.bytes.toString('base64')}` : null;
+  const branding = await loadSurveyBranding(survey.rows[0].id);
   res.json({
     status: 'paired',
     deviceId: req.device.device_id,
     deviceName: req.device.name,
     configVersion: req.device.config_version,
-    survey: { ...survey.rows[0], questions: questions.rows, branding: { logoData: toDataUrl(logo), backgroundData: toDataUrl(background) } },
+    survey: { ...survey.rows[0], questions: questions.rows, ...branding },
   });
 }));
 

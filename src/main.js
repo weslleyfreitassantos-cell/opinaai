@@ -145,7 +145,7 @@ async function prepareTenantImage(file, kind) {
         const fallbackType = file.type === 'image/jpeg' ? 'image/jpeg' : 'image/png';
         data = canvas.toDataURL(fallbackType, quality);
       }
-      if (data.length <= 700000) return data;
+      if (data.length <= 699000) return data;
       scale *= 0.75;
     }
     throw new Error('Não foi possível reduzir a logo para até 512 KB.');
@@ -161,7 +161,11 @@ function openDialog({ title, description = '', fields = [], submitLabel = 'Salva
     ? renderEmojiCustomizationFields(field.value, field.name, field.label || 'Personalizar carinhas animadas')
     : field.type === 'select'
       ? `<label>${escapeHtml(field.label)}<select name="${escapeHtml(field.name)}" required>${field.options.map((option) => `<option value="${escapeHtml(option.value)}" ${String(option.value) === String(field.value) ? 'selected' : ''}>${escapeHtml(option.label)}</option>`).join('')}</select></label>`
-      : `<label>${escapeHtml(field.label)}<input name="${escapeHtml(field.name)}" type="${field.type || 'text'}" value="${escapeHtml(field.value || '')}" ${field.minLength ? `minlength="${field.minLength}"` : ''} ${field.maxLength ? `maxlength="${field.maxLength}"` : ''} ${field.required === false ? '' : 'required'}></label>`;
+      : field.type === 'file'
+        ? `<label>${escapeHtml(field.label)}${field.previewSrc ? `<span class="dialog-file-preview"><img src="${escapeHtml(field.previewSrc)}" alt="Imagem atual"></span>` : ''}${field.hint ? `<small>${escapeHtml(field.hint)}</small>` : ''}<input name="${escapeHtml(field.name)}" type="file" accept="${escapeHtml(field.accept || '')}" ${field.required === false ? '' : 'required'}></label>`
+        : field.type === 'checkbox'
+          ? `<label class="app-dialog__checkbox" ${field.hidden ? 'hidden' : ''}><input name="${escapeHtml(field.name)}" type="checkbox" value="true" ${field.checked ? 'checked' : ''}><span>${escapeHtml(field.label)}</span></label>`
+      : `<label>${escapeHtml(field.label)}<input name="${escapeHtml(field.name)}" type="${field.type || 'text'}" value="${escapeHtml(field.value || '')}" ${field.minLength ? `minlength="${field.minLength}"` : ''} ${field.maxLength ? `maxlength="${field.maxLength}"` : ''} ${field.min !== undefined ? `min="${escapeHtml(field.min)}"` : ''} ${field.max !== undefined ? `max="${escapeHtml(field.max)}"` : ''} ${field.required === false ? '' : 'required'}></label>`;
   dialog.innerHTML = `<form method="dialog" class="app-dialog__form"><div class="app-dialog__header"><div><p class="section-kicker">OPINA AI</p><h2>${escapeHtml(title)}</h2>${description ? `<p>${escapeHtml(description)}</p>` : ''}</div><button type="button" class="app-dialog__close" aria-label="Fechar">×</button></div><div class="app-dialog__fields">${fields.map(renderField).join('')}</div><div class="app-dialog__actions"><button type="button" class="outline-button app-dialog__cancel">Cancelar</button><button type="submit" class="submit-button compact ${destructive ? 'danger-button' : ''}">${escapeHtml(submitLabel)}</button></div></form>`;
   document.body.appendChild(dialog);
   const dialogType = dialog.querySelector('select[name="type"]');
@@ -312,6 +316,9 @@ async function renderDashboard(root, user) {
   if (!selectedTenantId && tenants.length) selectedTenantId = tenants[0].id;
 
   const tenantOptions = () => tenants.map((tenant) => `<option value="${tenant.id}" ${String(tenant.id) === String(selectedTenantId) ? 'selected' : ''}>${escapeHtml(tenant.name)}</option>`).join('');
+  const tenantListMarkup = () => tenants.length
+    ? tenants.map((tenant) => `<div class="tenant-row"><div><strong>${escapeHtml(tenant.name)}</strong><small>${escapeHtml(tenant.adminEmail || 'Administrador não cadastrado')} · Tablets ativos: ${Number(tenant.activeDevices || 0)} / ${Number(tenant.deviceLimit || 1)}</small></div><button class="outline-button edit-tenant" type="button" data-tenant-id="${tenant.id}">Editar empresa</button></div>`).join('')
+    : '<p class="empty-state">Nenhuma empresa cadastrada.</p>';
 
   document.body.classList.add('dashboard-mode');
   root.innerHTML = `
@@ -340,7 +347,7 @@ async function renderDashboard(root, user) {
           <div class="section-heading"><div><h2>Resumo</h2></div><span class="section-counter">Período atual</span></div>
           <div id="report-metrics" class="metric-grid overview-metrics"></div>
         </section>
-        ${user.role === 'SUPERADMIN' ? `<section id="companies" class="dashboard-section admin-tools" data-dashboard-view="overview"><details class="admin-details"><summary><span><small>ADMINISTRAÇÃO</small><strong>Gerenciar empresas</strong></span><b>Adicionar empresa <span aria-hidden="true">＋</span></b></summary><article class="dashboard-card"><form id="tenant-form" class="form-grid form-grid--tenant"><label>Nome da empresa<input name="name" required></label><label>E-mail do administrador<input name="email" type="email" required></label><label>Senha inicial<input name="password" type="password" minlength="8" required></label><div class="form-submit-row"><button class="submit-button compact" type="submit">Criar empresa <span aria-hidden="true">→</span></button><p class="inline-message" id="tenant-message" role="status"></p></div></form></article></details></section>` : ''}
+        ${user.role === 'SUPERADMIN' ? `<section id="companies" class="dashboard-section admin-tools" data-dashboard-view="overview"><details class="admin-details"><summary><span><small>ADMINISTRAÇÃO</small><strong>Gerenciar empresas</strong></span><b>Adicionar empresa <span aria-hidden="true">＋</span></b></summary><article class="dashboard-card"><form id="tenant-form" class="form-grid form-grid--tenant"><label>Nome da empresa<input name="name" required></label><label>E-mail do administrador<input name="email" type="email" required></label><label>Senha inicial<input name="password" type="password" minlength="8" required></label><label>Limite de tablets<input name="deviceLimit" type="number" min="1" max="10000" step="1" value="1" required></label><div class="form-submit-row"><button class="submit-button compact" type="submit">Criar empresa <span aria-hidden="true">→</span></button><p class="inline-message" id="tenant-message" role="status"></p></div></form><div class="tenant-list-heading"><strong>Empresas cadastradas</strong></div><div id="tenant-list" class="tenant-list">${tenantListMarkup()}</div></article></details></section>` : ''}
         <section id="tablets" class="dashboard-section" data-dashboard-view="tablets">
           <div class="section-heading"><div><p class="section-kicker">OPERAÇÃO</p><h2>Tablets</h2></div><span id="device-count" class="section-counter">Carregando...</span></div>
           <article class="dashboard-card action-card action-card--pair"><div class="action-card__icon" aria-hidden="true">${dashboardIcon('tablet')}</div><div class="action-card__intro"><h3>Parear tablet</h3><p>Conecte um dispositivo à operação.</p></div><form id="pair-form" class="form-stack"><label>Código exibido no tablet<input name="activationCode" inputmode="numeric" maxlength="6" pattern="[0-9]{6}" required placeholder="Ex.: 482913"></label><div class="form-grid"><label>Nome do tablet<input name="deviceName" placeholder="Tablet Recepção"></label><label>Unidade / local<input name="locationName" value="Recepção" required></label></div><div class="form-submit-row"><button class="submit-button compact" type="submit">Parear dispositivo <span aria-hidden="true">→</span></button><p class="inline-message" id="pair-message" role="status"></p></div></form></article>
@@ -348,20 +355,21 @@ async function renderDashboard(root, user) {
         </section>
         <section id="surveys" class="dashboard-section" data-dashboard-view="surveys">
           <div class="section-heading"><div><p class="section-kicker">CONTEÚDO</p><h2>Pesquisas</h2></div></div>
-          <article class="dashboard-card action-card action-card--survey"><div class="action-card__icon" aria-hidden="true">${dashboardIcon('survey')}</div><div class="action-card__intro"><h3>Nova pesquisa</h3><p>Crie a pergunta exibida no tablet.</p></div><form id="survey-form" class="form-stack"><div class="form-grid"><label>Título da pesquisa<input name="title" required placeholder="Ex.: Experiência de atendimento"></label><label>Pergunta para o cliente<input name="question" required value="${DEFAULT_RATING_QUESTION}" placeholder="Digite a pergunta exibida no tablet"></label></div><label>Texto acima das avaliações<input name="headerText" maxlength="120" value="${DEFAULT_SURVEY_HEADER}" placeholder="Ex.: SUA OPINIÃO IMPORTA"></label><label>Tipo de resposta<select name="type"><option value="emoji">Carinhas animadas</option><option value="stars">Estrelas (1 a 5)</option><option value="scale">Nota de 1 a 10</option><option value="options">Opções personalizadas</option></select></label>${renderEmojiCustomizationFields()}<label class="options-field is-hidden">Opções separadas por vírgula<input class="options-field is-hidden" name="options" placeholder="Ótimo, Bom, Regular, Ruim"></label><div class="form-submit-row"><button id="preview-survey" class="outline-button submit-button compact" type="button">Pré-visualizar <span aria-hidden="true">↗</span></button><button class="submit-button compact" type="submit">Cadastrar pesquisa <span aria-hidden="true">→</span></button><p class="inline-message" id="survey-message" role="status"></p></div></form></article>
+          <article class="dashboard-card action-card action-card--survey"><div class="action-card__icon" aria-hidden="true">${dashboardIcon('survey')}</div><div class="action-card__intro"><h3>Nova pesquisa</h3><p>Crie a pergunta exibida no tablet.</p></div><form id="survey-form" class="form-stack"><div class="form-grid"><label>Título da pesquisa<input name="title" required placeholder="Ex.: Experiência de atendimento"></label><label>Pergunta para o cliente<input name="question" required value="${DEFAULT_RATING_QUESTION}" placeholder="Digite a pergunta exibida no tablet"></label></div><label>Texto acima das avaliações<input name="headerText" maxlength="120" value="${DEFAULT_SURVEY_HEADER}" placeholder="Ex.: SUA OPINIÃO IMPORTA"></label><div class="survey-branding-fields"><div class="report-branding-item"><div class="report-logo-preview"><img id="survey-logo-preview" alt="Prévia da logo desta pesquisa" hidden><span id="survey-logo-placeholder" aria-hidden="true">Logo</span></div><div class="report-branding-copy"><strong>Logo da pesquisa</strong><small>Opcional. Aparece no tablet desta pesquisa; não altera a logo do relatório.</small><p id="survey-logo-message" role="status" aria-live="polite"></p></div><div class="report-branding-actions"><label class="outline-button report-logo-select">Selecionar logo<input id="survey-logo-input" type="file" accept="image/png,image/jpeg,image/webp"></label><button id="remove-survey-logo" class="outline-button" type="button" disabled>Remover</button></div></div><div class="report-branding-item"><div class="report-background-preview"><img id="survey-background-preview" alt="Prévia do fundo desta pesquisa" hidden><span id="survey-background-placeholder" aria-hidden="true">Fundo</span></div><div class="report-branding-copy"><strong>Plano de fundo</strong><small>Opcional. Aparece somente na tela do tablet desta pesquisa.</small><p id="survey-background-message" role="status" aria-live="polite"></p></div><div class="report-branding-actions"><label class="outline-button report-logo-select">Selecionar imagem<input id="survey-background-input" type="file" accept="image/png,image/jpeg,image/webp"></label><button id="remove-survey-background" class="outline-button" type="button" disabled>Remover</button></div></div></div><label>Tipo de resposta<select name="type"><option value="emoji">Carinhas animadas</option><option value="stars">Estrelas (1 a 5)</option><option value="scale">Nota de 1 a 10</option><option value="options">Opções personalizadas</option></select></label>${renderEmojiCustomizationFields()}<label class="options-field is-hidden">Opções separadas por vírgula<input class="options-field is-hidden" name="options" placeholder="Ótimo, Bom, Regular, Ruim"></label><div class="form-submit-row"><button id="preview-survey" class="outline-button submit-button compact" type="button">Pré-visualizar <span aria-hidden="true">↗</span></button><button class="submit-button compact" type="submit">Cadastrar pesquisa <span aria-hidden="true">→</span></button><p class="inline-message" id="survey-message" role="status"></p></div></form></article>
           <div class="dashboard-card"><div id="survey-list" class="survey-list">Carregando...</div></div>
         </section>
         <section id="reports" class="dashboard-section report-section" data-dashboard-view="reports">
           <div class="section-heading">
             <div class="report-heading-copy">
               <p class="section-kicker">RESULTADOS</p>
-              <h2>Relatórios</h2>
+              <h2><span class="report-screen-title">Relatórios</span><span class="report-print-title">Relatório de satisfação</span></h2>
+              <p id="report-company-subtitle" class="report-print-company"></p>
               <div class="report-print-identity"><strong id="report-company-name"></strong><img id="report-company-logo" alt="Logo da empresa" hidden></div>
             </div>
             <div class="section-heading__action"><span id="report-total" class="section-counter">Carregando...</span><button id="print-report" class="outline-button report-print-button" type="button"><span aria-hidden="true">${dashboardIcon('printer')}</span>Imprimir relatório</button></div>
           </div>
-          ${['SUPERADMIN', 'ADMIN'].includes(user.role) ? `<article id="report-branding-controls" class="dashboard-card report-branding-controls"><div class="report-branding-item"><div class="report-logo-preview"><img id="tenant-logo-preview" alt="Prévia da logo da empresa" hidden><span id="tenant-logo-placeholder" aria-hidden="true">${dashboardIcon('spark')}</span></div><div class="report-branding-copy"><strong>Logo da empresa</strong><small>PNG, JPEG ou WebP. Aparece no relatório impresso e na pesquisa do tablet.</small><p id="tenant-logo-message" role="status" aria-live="polite"></p></div><div class="report-branding-actions"><label class="outline-button report-logo-select">Selecionar logo<input id="tenant-logo-input" type="file" accept="image/png,image/jpeg,image/webp"></label><button id="remove-tenant-logo" class="outline-button" type="button" disabled>Remover</button></div></div><div class="report-branding-item"><div class="report-background-preview"><img id="tenant-background-preview" alt="Prévia do plano de fundo" hidden><span id="tenant-background-placeholder" aria-hidden="true">Imagem</span></div><div class="report-branding-copy"><strong>Plano de fundo</strong><small>Aparece somente na pesquisa do tablet.</small><p id="tenant-background-message" role="status" aria-live="polite"></p></div><div class="report-branding-actions"><label class="outline-button report-logo-select">Selecionar imagem<input id="tenant-background-input" type="file" accept="image/png,image/jpeg,image/webp"></label><button id="remove-tenant-background" class="outline-button" type="button" disabled>Remover</button></div></div></article>` : ''}
-          <p id="report-print-context" class="report-print-context"></p>
+          ${['SUPERADMIN', 'ADMIN'].includes(user.role) ? `<article id="report-branding-controls" class="dashboard-card report-branding-controls"><div class="report-branding-item"><div class="report-logo-preview"><img id="tenant-logo-preview" alt="Prévia da logo da empresa" hidden><span id="tenant-logo-placeholder" aria-hidden="true">${dashboardIcon('spark')}</span></div><div class="report-branding-copy"><strong>Logo do relatório</strong><small>PNG, JPEG ou WebP. Aparece somente no relatório impresso.</small><p id="tenant-logo-message" role="status" aria-live="polite"></p></div><div class="report-branding-actions"><label class="outline-button report-logo-select">Selecionar logo<input id="tenant-logo-input" type="file" accept="image/png,image/jpeg,image/webp"></label><button id="remove-tenant-logo" class="outline-button" type="button" disabled>Remover</button></div></div></article>` : ''}
+          <div id="report-print-context" class="report-print-context"></div>
           <div class="dashboard-card report-card"><div class="report-toolbar"><div class="date-row"><label>De <input id="from" type="date"></label><label>Até <input id="to" type="date"></label></div><div class="report-filters"><label>Pesquisa<select id="report-survey"><option value="">Todas</option></select></label><label>Unidade<select id="report-location"><option value="">Todas</option></select></label><label>Tablet<select id="report-device"><option value="">Todos</option></select></div><button id="load-report" class="outline-button" type="button">Atualizar <span aria-hidden="true">↻</span></button></div><div class="report-results"><div class="report-results__header"><h3>Distribuição</h3><span>Respostas por avaliação</span></div><div id="report-distribution" class="distribution-list"></div><div id="report-list" class="report-list"></div></div></div>
         </section>
       </section>
@@ -436,6 +444,46 @@ async function renderDashboard(root, user) {
         await renderDashboard(root, user);
       } catch (error) { message.textContent = error.message; } finally { submitButton.disabled = false; }
     };
+    root.querySelector('#tenant-list').onclick = async (event) => {
+      const button = event.target.closest('.edit-tenant');
+      if (!button) return;
+      const tenant = tenants.find((item) => String(item.id) === button.dataset.tenantId);
+      if (!tenant) return;
+      const values = await openDialog({
+        title: `Editar ${tenant.name}`,
+        description: 'Altere o nome da empresa, o limite de tablets e os dados de acesso do administrador.',
+        fields: [
+          { name: 'name', label: 'Nome da empresa', value: tenant.name },
+          { name: 'deviceLimit', label: 'Limite de tablets', type: 'number', value: tenant.deviceLimit || 1, min: 1, max: 10000 },
+          { name: 'adminEmail', label: 'E-mail do administrador', type: 'email', value: tenant.adminEmail || '' },
+          { name: 'adminPassword', label: 'Nova senha (deixe em branco para manter)', type: 'password', minLength: 8, required: false },
+        ],
+        submitLabel: 'Salvar alterações',
+      });
+      if (!values) return;
+      const message = root.querySelector('#tenant-message');
+      message.classList.remove('inline-message--error');
+      try {
+        await api(`/api/tenants/${tenant.id}`, {
+          method: 'PATCH',
+          body: JSON.stringify({ name: values.name, deviceLimit: values.deviceLimit, adminEmail: values.adminEmail, adminPassword: values.adminPassword }),
+        });
+        tenants = await api('/api/tenants');
+        root.querySelector('#tenant-list').innerHTML = tenantListMarkup();
+        const tenantFilter = root.querySelector('#tenant-filter');
+        tenantFilter.innerHTML = tenantOptions();
+        tenantFilter.value = String(selectedTenantId);
+        const updatedTenant = tenants.find((item) => String(item.id) === String(tenant.id));
+        if (updatedTenant && String(selectedTenantId) === String(tenant.id)) {
+          tenantBranding = { ...tenantBranding, name: updatedTenant.name };
+          applyTenantBranding(tenantBranding);
+        }
+        message.textContent = 'Empresa atualizada.';
+      } catch (error) {
+        message.textContent = error.message;
+        message.classList.add('inline-message--error');
+      }
+    };
   }
 
   const typeSelect = root.querySelector('#survey-form [name=type]');
@@ -446,6 +494,64 @@ async function renderDashboard(root, user) {
   typeSelect.onchange = toggleSurveyFields;
   toggleSurveyFields();
 
+  const surveyBrandingDraft = { logoData: null, backgroundData: null };
+  const surveyBrandingTasks = { logo: Promise.resolve(), background: Promise.resolve() };
+  const surveyBrandingInputs = [
+    { kind: 'logo', field: 'logoData', input: root.querySelector('#survey-logo-input'), preview: root.querySelector('#survey-logo-preview'), placeholder: root.querySelector('#survey-logo-placeholder'), removeButton: root.querySelector('#remove-survey-logo'), message: root.querySelector('#survey-logo-message') },
+    { kind: 'background', field: 'backgroundData', input: root.querySelector('#survey-background-input'), preview: root.querySelector('#survey-background-preview'), placeholder: root.querySelector('#survey-background-placeholder'), removeButton: root.querySelector('#remove-survey-background'), message: root.querySelector('#survey-background-message') },
+  ];
+  const resetSurveyBranding = () => {
+    for (const asset of surveyBrandingInputs) {
+      surveyBrandingDraft[asset.field] = null;
+      asset.input.value = '';
+      asset.preview.removeAttribute('src');
+      asset.preview.hidden = true;
+      asset.placeholder.hidden = false;
+      asset.removeButton.disabled = true;
+      asset.message.textContent = '';
+      asset.message.classList.remove('inline-message--error');
+      surveyBrandingTasks[asset.kind] = Promise.resolve();
+    }
+  };
+  for (const asset of surveyBrandingInputs) {
+    asset.input.onchange = () => {
+      const file = asset.input.files?.[0];
+      if (!file) return;
+      asset.input.disabled = true;
+      asset.removeButton.disabled = true;
+      asset.message.textContent = `Preparando ${asset.kind === 'logo' ? 'logo' : 'plano de fundo'}...`;
+      asset.message.classList.remove('inline-message--error');
+      surveyBrandingTasks[asset.kind] = (async () => {
+        try {
+          const imageData = await prepareTenantImage(file, asset.kind);
+          surveyBrandingDraft[asset.field] = imageData;
+          asset.preview.src = imageData;
+          asset.preview.hidden = false;
+          asset.placeholder.hidden = true;
+          asset.message.textContent = 'Imagem pronta para esta pesquisa.';
+          asset.removeButton.disabled = false;
+        } catch (error) {
+          surveyBrandingDraft[asset.field] = null;
+          asset.input.value = '';
+          asset.message.textContent = error.message;
+          asset.message.classList.add('inline-message--error');
+        } finally {
+          asset.input.disabled = false;
+        }
+      })();
+    };
+    asset.removeButton.onclick = () => {
+      surveyBrandingDraft[asset.field] = null;
+      asset.input.value = '';
+      asset.preview.removeAttribute('src');
+      asset.preview.hidden = true;
+      asset.placeholder.hidden = false;
+      asset.removeButton.disabled = true;
+      asset.message.textContent = asset.kind === 'logo' ? 'Logo removida desta pesquisa.' : 'Plano de fundo removido desta pesquisa.';
+      asset.message.classList.remove('inline-message--error');
+    };
+  }
+
   root.querySelector('#preview-survey').onclick = async (event) => {
     const formElement = root.querySelector('#survey-form');
     if (!formElement.reportValidity()) return;
@@ -455,7 +561,7 @@ async function renderDashboard(root, user) {
     message.textContent = '';
     message.classList.remove('inline-message--error');
     try {
-      await loadTenantBranding();
+      await Promise.all(Object.values(surveyBrandingTasks));
       const form = new FormData(formElement);
       const type = String(form.get('type') || 'emoji');
       const options = type === 'emoji'
@@ -467,7 +573,10 @@ async function renderDashboard(root, user) {
         id: 'preview-questionnaire',
         title: form.get('title'),
         theme: { headerText: form.get('headerText') },
-        branding: tenantBranding,
+        branding: {
+          logoData: surveyBrandingDraft.logoData || '',
+          backgroundData: surveyBrandingDraft.backgroundData || '',
+        },
         questions: [{ id: 'preview-question', text: form.get('question'), type, options }],
       };
       const previewId = crypto.randomUUID();
@@ -500,15 +609,18 @@ async function renderDashboard(root, user) {
       title: form.get('title'),
       description: form.get('question'),
       headerText: form.get('headerText'),
+      logoData: surveyBrandingDraft.logoData,
+      backgroundData: surveyBrandingDraft.backgroundData,
       questions: [{ text: form.get('question'), type, options }],
     };
     const message = root.querySelector('#survey-message');
     const submitButton = event.target.querySelector('button[type="submit"]');
     submitButton.disabled = true;
     try {
+      await Promise.all(Object.values(surveyBrandingTasks));
       await api('/api/surveys', { method: 'POST', body: JSON.stringify(payload) });
       message.textContent = 'Pesquisa cadastrada. Agora associe-a a um tablet.';
-      event.target.reset(); toggleSurveyFields(); await loadDashboardData();
+      event.target.reset(); resetSurveyBranding(); toggleSurveyFields(); await loadDashboardData();
     } catch (error) { message.textContent = error.message; } finally { submitButton.disabled = false; }
   };
 
@@ -545,7 +657,6 @@ async function renderDashboard(root, user) {
 
   const brandingAssets = [
     { kind: 'logo', field: 'logoData', label: 'logo', inputId: '#tenant-logo-input', removeId: '#remove-tenant-logo', previewId: '#tenant-logo-preview', placeholderId: '#tenant-logo-placeholder', messageId: '#tenant-logo-message' },
-    { kind: 'background', field: 'backgroundData', label: 'imagem de fundo', inputId: '#tenant-background-input', removeId: '#remove-tenant-background', previewId: '#tenant-background-preview', placeholderId: '#tenant-background-placeholder', messageId: '#tenant-background-message' },
   ].map((asset) => ({
     ...asset,
     input: root.querySelector(asset.inputId),
@@ -561,9 +672,11 @@ async function renderDashboard(root, user) {
     const logoData = branding?.logoData || '';
     const reportIdentity = root.querySelector('.report-print-identity');
     const reportCompanyName = root.querySelector('#report-company-name');
+    const reportCompanySubtitle = root.querySelector('#report-company-subtitle');
     const reportLogo = root.querySelector('#report-company-logo');
 
     if (reportCompanyName) reportCompanyName.textContent = branding?.name || '';
+    if (reportCompanySubtitle) reportCompanySubtitle.textContent = branding?.name || '';
     if (reportIdentity) reportIdentity.hidden = !branding?.name && !logoData;
     if (reportLogo) {
       reportLogo.hidden = !logoData;
@@ -633,9 +746,7 @@ async function renderDashboard(root, user) {
           brandingTenantId = String(tenantId);
           applyTenantBranding(tenantBranding);
         }
-        if (asset.message) asset.message.textContent = asset.kind === 'logo'
-          ? 'Logo salva para o relatório e os tablets.'
-          : 'Plano de fundo salvo para a pesquisa no tablet.';
+        if (asset.message) asset.message.textContent = 'Logo salva para o relatório impresso.';
       } catch (error) {
         if (asset.message) asset.message.textContent = error.message;
       } finally {
@@ -660,7 +771,7 @@ async function renderDashboard(root, user) {
           brandingTenantId = String(tenantId);
           applyTenantBranding(tenantBranding);
         }
-        if (asset.message) asset.message.textContent = asset.kind === 'logo' ? 'Logo removida.' : 'Plano de fundo removido.';
+        if (asset.message) asset.message.textContent = 'Logo do relatório removida.';
       } catch (error) {
         if (asset.message) asset.message.textContent = error.message;
         asset.removeButton.disabled = !tenantBranding?.[asset.field];
@@ -690,6 +801,10 @@ async function renderDashboard(root, user) {
 
   async function loadDashboardDataUnsafe() {
     await loadTenantBranding();
+    if (user.role === 'SUPERADMIN') {
+      tenants = await api('/api/tenants');
+      root.querySelector('#tenant-list').innerHTML = tenantListMarkup();
+    }
     const suffix = selectedTenantId ? `?tenantId=${encodeURIComponent(selectedTenantId)}` : '';
     const reportParams = new URLSearchParams();
     if (selectedTenantId) reportParams.set('tenantId', selectedTenantId);
@@ -745,17 +860,25 @@ async function renderDashboard(root, user) {
       ? `${formatReportDate(fromDate)} a ${formatReportDate(toDate)}`
       : fromDate ? `Desde ${formatReportDate(fromDate)}`
         : toDate ? `Até ${formatReportDate(toDate)}` : 'Todo o período';
-    const printContext = [
-      `Período: ${periodLabel}`,
-      `Pesquisa: ${root.querySelector('#report-survey').selectedOptions[0]?.textContent.trim() || 'Todas'}`,
-      `Unidade: ${root.querySelector('#report-location').selectedOptions[0]?.textContent.trim() || 'Todas'}`,
-      `Tablet: ${root.querySelector('#report-device').selectedOptions[0]?.textContent.trim() || 'Todos'}`,
-    ];
-    const tenantName = root.querySelector('#tenant-filter')?.selectedOptions[0]?.textContent.trim();
-    if (tenantName) printContext.unshift(`Empresa: ${tenantName}`);
-    root.querySelector('#report-print-context').textContent = printContext.join(' · ');
     const report = reports?.metrics ? reports : { metrics: { total: 0, averageScore: null, satisfiedRate: 0, neutralRate: 0, dissatisfiedRate: 0 }, distribution: [], rows: [] };
     const metrics = report.metrics;
+    const printContext = [
+      ['Período', periodLabel],
+      ['Pesquisa', root.querySelector('#report-survey').selectedOptions[0]?.textContent.trim() || 'Todas'],
+      ['Unidade', root.querySelector('#report-location').selectedOptions[0]?.textContent.trim() || 'Todas'],
+      ['Tablet', root.querySelector('#report-device').selectedOptions[0]?.textContent.trim() || 'Todos'],
+    ];
+    const printContextContainer = root.querySelector('#report-print-context');
+    printContextContainer.replaceChildren(...printContext.map(([label, value]) => {
+      const line = document.createElement('div');
+      line.className = 'report-print-context__item';
+      const labelElement = document.createElement('strong');
+      labelElement.textContent = `${label}:`;
+      const valueElement = document.createElement('span');
+      valueElement.textContent = value;
+      line.append(labelElement, valueElement);
+      return line;
+    }));
     root.querySelector('#report-total').textContent = `${metrics.total} avaliação(ões)`;
     root.querySelector('#report-metrics').innerHTML = `<div class="metric-card metric-card--blue"><div class="metric-card__top"><span class="metric-card__icon" aria-hidden="true">${dashboardIcon('evaluations')}</span><span>Avaliações</span></div><strong>${metrics.total}</strong><small>No período</small></div><div class="metric-card metric-card--green"><div class="metric-card__top"><span class="metric-card__icon" aria-hidden="true">${dashboardIcon('satisfaction')}</span><span>Satisfação</span></div><strong>${Number(metrics.satisfiedRate || 0).toLocaleString('pt-BR')}%</strong><small>Clientes satisfeitos</small></div><div class="metric-card metric-card--purple"><div class="metric-card__top"><span class="metric-card__icon" aria-hidden="true">${dashboardIcon('rating')}</span><span>Nota média</span></div><strong>${metrics.averageScore === null ? '—' : Number(metrics.averageScore).toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}</strong><small>De 1 a 5</small></div><div class="metric-card metric-card--orange"><div class="metric-card__top"><span class="metric-card__icon" aria-hidden="true">${dashboardIcon('dissatisfaction')}</span><span>Insatisfação</span></div><strong>${Number(metrics.dissatisfiedRate || 0).toLocaleString('pt-BR')}%</strong><small>Clientes insatisfeitos</small></div>`;
     root.querySelector('#report-distribution').innerHTML = report.distribution?.length
@@ -811,7 +934,7 @@ async function renderDashboard(root, user) {
         const question = survey.questions?.[0];
         const values = await openDialog({
           title: 'Editar pesquisa',
-          description: 'Altere o texto e o tipo de resposta exibidos no tablet.',
+          description: 'Altere a pesquisa e, se quiser, personalize a logo e o fundo exibidos no tablet.',
           fields: [
             { name: 'title', label: 'Título da pesquisa', value: survey.title },
             { name: 'headerText', label: 'Texto acima das avaliações', value: typeof survey.theme?.headerText === 'string' ? survey.theme.headerText : DEFAULT_SURVEY_HEADER, maxLength: 120, required: false },
@@ -824,14 +947,30 @@ async function renderDashboard(root, user) {
             ] },
             { name: 'emoji-config', label: 'Personalizar carinhas animadas', value: normalizeEmojiOptions(question?.options), type: 'emoji-config' },
             { name: 'options', label: 'Opções separadas por vírgula', value: (question?.options || []).join(', '), required: false },
+            { name: 'logoFile', label: 'Logo desta pesquisa', type: 'file', accept: 'image/png,image/jpeg,image/webp', required: false, previewSrc: survey.branding?.logoData, hint: survey.brandingOverrides?.logo ? 'Logo personalizada atual. Selecione outra para substituir.' : 'Esta pesquisa ainda não tem logo própria. Selecione uma para exibir no tablet.' },
+            { name: 'removeLogo', label: 'Remover logo personalizada', type: 'checkbox', hidden: !survey.brandingOverrides?.logo },
+            { name: 'backgroundFile', label: 'Plano de fundo desta pesquisa', type: 'file', accept: 'image/png,image/jpeg,image/webp', required: false, previewSrc: survey.branding?.backgroundData, hint: survey.brandingOverrides?.background ? 'Fundo personalizado atual. Selecione outra imagem para substituir.' : 'Esta pesquisa ainda não tem fundo próprio. Selecione uma imagem para o tablet.' },
+            { name: 'removeBackground', label: 'Remover fundo personalizado', type: 'checkbox', hidden: !survey.brandingOverrides?.background },
           ],
         });
         if (!values) return;
         const nextQuestion = { text: values.questionText, type: values.type, options: values.type === 'emoji' ? readEmojiOptions(values, 'emoji-config') : values.type === 'options' ? values.options.split(',').map((item) => item.trim()).filter(Boolean) : [] };
+        const brandingUpdate = {};
         button.disabled = true;
         try {
+          if (values.logoFile?.size) brandingUpdate.logoData = await prepareTenantImage(values.logoFile, 'logo');
+          else if (values.removeLogo) brandingUpdate.logoData = null;
+          if (values.backgroundFile?.size) brandingUpdate.backgroundData = await prepareTenantImage(values.backgroundFile, 'background');
+          else if (values.removeBackground) brandingUpdate.backgroundData = null;
           await api(`/api/surveys/${survey.id}`, { method: 'PATCH', body: JSON.stringify({ title: values.title, headerText: values.headerText, description: values.questionText, questions: [nextQuestion] }) });
+          if (Object.keys(brandingUpdate).length) {
+            await api(`/api/surveys/${survey.id}/branding`, { method: 'PUT', body: JSON.stringify(brandingUpdate) });
+          }
           await loadDashboardData();
+        } catch (error) {
+          const status = root.querySelector('#dashboard-status');
+          status.innerHTML = `<i></i>${escapeHtml(error.message)}`;
+          status.classList.add('sync-status--error');
         } finally { button.disabled = false; }
       };
     });
