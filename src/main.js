@@ -158,7 +158,7 @@ function openDialog({ title, description = '', fields = [], submitLabel = 'Salva
     ? renderEmojiCustomizationFields(field.value, field.name, field.label || 'Personalizar carinhas animadas')
     : field.type === 'select'
       ? `<label>${escapeHtml(field.label)}<select name="${escapeHtml(field.name)}" required>${field.options.map((option) => `<option value="${escapeHtml(option.value)}" ${String(option.value) === String(field.value) ? 'selected' : ''}>${escapeHtml(option.label)}</option>`).join('')}</select></label>`
-      : `<label>${escapeHtml(field.label)}<input name="${escapeHtml(field.name)}" type="${field.type || 'text'}" value="${escapeHtml(field.value || '')}" ${field.required === false ? '' : 'required'}></label>`;
+      : `<label>${escapeHtml(field.label)}<input name="${escapeHtml(field.name)}" type="${field.type || 'text'}" value="${escapeHtml(field.value || '')}" ${field.minLength ? `minlength="${field.minLength}"` : ''} ${field.required === false ? '' : 'required'}></label>`;
   dialog.innerHTML = `<form method="dialog" class="app-dialog__form"><div class="app-dialog__header"><div><p class="section-kicker">OPINA AI</p><h2>${escapeHtml(title)}</h2>${description ? `<p>${escapeHtml(description)}</p>` : ''}</div><button type="button" class="app-dialog__close" aria-label="Fechar">×</button></div><div class="app-dialog__fields">${fields.map(renderField).join('')}</div><div class="app-dialog__actions"><button type="button" class="outline-button app-dialog__cancel">Cancelar</button><button type="submit" class="submit-button compact ${destructive ? 'danger-button' : ''}">${escapeHtml(submitLabel)}</button></div></form>`;
   document.body.appendChild(dialog);
   const dialogType = dialog.querySelector('select[name="type"]');
@@ -389,11 +389,11 @@ async function renderDashboard(root, user) {
   root.querySelector('#change-password').onclick = async () => {
     const values = await openDialog({
       title: 'Trocar senha',
-      description: 'Use uma senha com pelo menos 12 caracteres.',
+      description: 'Use uma senha com pelo menos 8 caracteres.',
       fields: [
         { name: 'currentPassword', label: 'Senha atual', type: 'password' },
-        { name: 'newPassword', label: 'Nova senha', type: 'password' },
-        { name: 'confirmPassword', label: 'Confirmar nova senha', type: 'password' },
+        { name: 'newPassword', label: 'Nova senha', type: 'password', minLength: 8 },
+        { name: 'confirmPassword', label: 'Confirmar nova senha', type: 'password', minLength: 8 },
       ],
       submitLabel: 'Atualizar senha',
     });

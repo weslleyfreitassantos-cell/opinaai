@@ -288,8 +288,8 @@ async function bootstrapAdmin() {
   const password = String(process.env.BOOTSTRAP_ADMIN_PASSWORD || '');
   const name = cleanText(process.env.BOOTSTRAP_ADMIN_NAME || 'Administrador Opina AI', 160);
   if (!email && !password) return;
-  if (!email || password.length < 12) {
-    throw new Error('BOOTSTRAP_ADMIN_EMAIL e BOOTSTRAP_ADMIN_PASSWORD (mín. 12 caracteres) devem ser definidos juntos.');
+  if (!email || password.length < 8) {
+    throw new Error('BOOTSTRAP_ADMIN_EMAIL e BOOTSTRAP_ADMIN_PASSWORD (mín. 8 caracteres) devem ser definidos juntos.');
   }
 
   const exists = await pool.query('SELECT id FROM users WHERE lower(email)=lower($1)', [email]);
@@ -383,8 +383,8 @@ app.get('/api/me', auth, (req, res) => res.json(req.user));
 app.post('/api/auth/change-password', auth, asyncRoute(async (req, res) => {
   const currentPassword = String(req.body?.currentPassword || '');
   const newPassword = String(req.body?.newPassword || '');
-  if (!currentPassword || newPassword.length < 12) {
-    return res.status(400).json({ error: 'A nova senha precisa ter pelo menos 12 caracteres.' });
+  if (!currentPassword || newPassword.length < 8) {
+    return res.status(400).json({ error: 'A nova senha precisa ter pelo menos 8 caracteres.' });
   }
   const result = await pool.query('SELECT password_hash FROM users WHERE id=$1 AND active=true', [req.user.id]);
   if (!result.rowCount || !(await bcrypt.compare(currentPassword, result.rows[0].password_hash))) {
@@ -446,8 +446,8 @@ app.post('/api/tenants', auth, asyncRoute(async (req, res) => {
   const name = cleanText(req.body?.name, 160);
   const email = cleanText(req.body?.email, 180);
   const password = String(req.body?.password || '');
-  if (!name || !email || password.length < 12) {
-    return res.status(400).json({ error: 'Informe empresa, e-mail e senha com pelo menos 12 caracteres.' });
+  if (!name || !email || password.length < 8) {
+    return res.status(400).json({ error: 'Informe empresa, e-mail e senha com pelo menos 8 caracteres.' });
   }
 
   const client = await pool.connect();
