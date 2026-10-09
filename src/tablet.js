@@ -210,15 +210,29 @@ export async function renderTablet(root) {
   const browserTestMode = !isNativeRuntime();
 
   if (browserTestMode) {
-    const browserTestType = new URLSearchParams(location.search).get('type') === 'emoji' ? 'emoji' : 'stars';
+    const search = new URLSearchParams(location.search);
+    const previewId = search.get('preview');
+    let previewSurvey = null;
+    if (previewId && /^[0-9a-f-]{36}$/i.test(previewId)) {
+      const previewKey = `opina_survey_preview_${previewId}`;
+      try { previewSurvey = JSON.parse(localStorage.getItem(previewKey) || 'null'); } catch { /* Ignore expired or invalid previews. */ }
+      localStorage.removeItem(previewKey);
+    }
+    if (previewId && (!previewSurvey || !Array.isArray(previewSurvey.questions))) {
+      root.innerHTML = '<main class="tablet-shell"><section class="tablet-card"><p class="tablet-kicker">PRÉ-VISUALIZAÇÃO</p><h1>Prévia indisponível</h1><p class="tablet-copy">Volte ao painel e abra a pré-visualização novamente.</p></section></main>';
+      return;
+    }
+    const browserTestType = search.get('type') === 'emoji' ? 'emoji' : 'stars';
     renderSurvey({
-      id: 'browser-test-survey',
-      questions: [{
-        id: 'browser-test-question',
-        text: DEFAULT_RATING_QUESTION,
-        type: browserTestType,
-        options: [],
-      }],
+      ...(previewSurvey || {
+        id: 'browser-test-survey',
+        questions: [{
+          id: 'browser-test-question',
+          text: DEFAULT_RATING_QUESTION,
+          type: browserTestType,
+          options: [],
+        }],
+      }),
     });
     return;
   }

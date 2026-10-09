@@ -348,7 +348,7 @@ async function renderDashboard(root, user) {
         </section>
         <section id="surveys" class="dashboard-section" data-dashboard-view="surveys">
           <div class="section-heading"><div><p class="section-kicker">CONTEÚDO</p><h2>Pesquisas</h2></div></div>
-          <article class="dashboard-card action-card action-card--survey"><div class="action-card__icon" aria-hidden="true">${dashboardIcon('survey')}</div><div class="action-card__intro"><h3>Nova pesquisa</h3><p>Crie a pergunta exibida no tablet.</p></div><form id="survey-form" class="form-stack"><div class="form-grid"><label>Título da pesquisa<input name="title" required placeholder="Ex.: Experiência de atendimento"></label><label>Pergunta para o cliente<input name="question" required value="${DEFAULT_RATING_QUESTION}" placeholder="Digite a pergunta exibida no tablet"></label></div><label>Texto acima das avaliações<input name="headerText" maxlength="120" value="${DEFAULT_SURVEY_HEADER}" placeholder="Ex.: SUA OPINIÃO IMPORTA"></label><label>Tipo de resposta<select name="type"><option value="emoji">Carinhas animadas</option><option value="stars">Estrelas (1 a 5)</option><option value="scale">Nota de 1 a 10</option><option value="options">Opções personalizadas</option></select></label>${renderEmojiCustomizationFields()}<label class="options-field is-hidden">Opções separadas por vírgula<input class="options-field is-hidden" name="options" placeholder="Ótimo, Bom, Regular, Ruim"></label><div class="form-submit-row"><button class="submit-button compact" type="submit">Cadastrar pesquisa <span aria-hidden="true">→</span></button><p class="inline-message" id="survey-message" role="status"></p></div></form></article>
+          <article class="dashboard-card action-card action-card--survey"><div class="action-card__icon" aria-hidden="true">${dashboardIcon('survey')}</div><div class="action-card__intro"><h3>Nova pesquisa</h3><p>Crie a pergunta exibida no tablet.</p></div><form id="survey-form" class="form-stack"><div class="form-grid"><label>Título da pesquisa<input name="title" required placeholder="Ex.: Experiência de atendimento"></label><label>Pergunta para o cliente<input name="question" required value="${DEFAULT_RATING_QUESTION}" placeholder="Digite a pergunta exibida no tablet"></label></div><label>Texto acima das avaliações<input name="headerText" maxlength="120" value="${DEFAULT_SURVEY_HEADER}" placeholder="Ex.: SUA OPINIÃO IMPORTA"></label><label>Tipo de resposta<select name="type"><option value="emoji">Carinhas animadas</option><option value="stars">Estrelas (1 a 5)</option><option value="scale">Nota de 1 a 10</option><option value="options">Opções personalizadas</option></select></label>${renderEmojiCustomizationFields()}<label class="options-field is-hidden">Opções separadas por vírgula<input class="options-field is-hidden" name="options" placeholder="Ótimo, Bom, Regular, Ruim"></label><div class="form-submit-row"><button id="preview-survey" class="outline-button submit-button compact" type="button">Pré-visualizar <span aria-hidden="true">↗</span></button><button class="submit-button compact" type="submit">Cadastrar pesquisa <span aria-hidden="true">→</span></button><p class="inline-message" id="survey-message" role="status"></p></div></form></article>
           <div class="dashboard-card"><div id="survey-list" class="survey-list">Carregando...</div></div>
         </section>
         <section id="reports" class="dashboard-section report-section" data-dashboard-view="reports">
@@ -446,6 +446,48 @@ async function renderDashboard(root, user) {
   };
   typeSelect.onchange = toggleSurveyFields;
   toggleSurveyFields();
+
+  root.querySelector('#preview-survey').onclick = async (event) => {
+    const formElement = root.querySelector('#survey-form');
+    if (!formElement.reportValidity()) return;
+    const button = event.currentTarget;
+    const message = root.querySelector('#survey-message');
+    button.disabled = true;
+    message.textContent = '';
+    message.classList.remove('inline-message--error');
+    try {
+      await loadTenantBranding();
+      const form = new FormData(formElement);
+      const type = String(form.get('type') || 'emoji');
+      const options = type === 'emoji'
+        ? readEmojiOptions(form, 'rating')
+        : type === 'options'
+          ? String(form.get('options') || '').split(',').map((item) => item.trim()).filter(Boolean)
+          : [];
+      const survey = {
+        id: 'preview-questionnaire',
+        title: form.get('title'),
+        theme: { headerText: form.get('headerText') },
+        branding: tenantBranding,
+        questions: [{ id: 'preview-question', text: form.get('question'), type, options }],
+      };
+      const previewId = crypto.randomUUID();
+      localStorage.setItem(`opina_survey_preview_${previewId}`, JSON.stringify(survey));
+      const previewWindow = window.open(`/tablet?preview=${encodeURIComponent(previewId)}`, '_blank');
+      if (!previewWindow) {
+        localStorage.removeItem(`opina_survey_preview_${previewId}`);
+        message.textContent = 'Permita pop-ups para abrir a pré-visualização.';
+        message.classList.add('inline-message--error');
+        return;
+      }
+      previewWindow.opener = null;
+    } catch (error) {
+      message.textContent = error.message || 'Não foi possível abrir a pré-visualização.';
+      message.classList.add('inline-message--error');
+    } finally {
+      button.disabled = false;
+    }
+  };
 
   root.querySelector('#survey-form').onsubmit = async (event) => {
     event.preventDefault();

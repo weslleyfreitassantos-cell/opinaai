@@ -164,6 +164,7 @@
 .form-submit-row { display: flex; align-items: center; gap: 12px; }
 .submit-button.compact { display: inline-flex; align-items: center; justify-content: center; gap: 9px; width: fit-content; min-height: 46px; height: 46px; margin-top: 5px; padding: 0 17px; border-radius: 10px; font-size: .8rem; }
 .inline-message { flex: 1; min-height: 20px; margin: 5px 0 0; color: #1a936f; font-size: .74rem; }
+.inline-message--error { color: #b42318; }
 
 .dashboard-card--flush { padding: 0 25px; }
 .device-list, .survey-list { min-width: 0; }
