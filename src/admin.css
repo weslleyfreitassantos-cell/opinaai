@@ -268,23 +268,24 @@
 @media print {
   html, body { width: auto !important; min-height: 0 !important; color: #10213e !important; background: transparent !important; }
   body.dashboard-mode { display: block !important; margin: 0 !important; background: transparent !important; }
-  #app, .dashboard-shell, .dashboard-content { display: block !important; width: auto !important; min-height: 0 !important; margin: 0 !important; padding: 0 !important; overflow: visible !important; color: #10213e !important; background: transparent !important; box-shadow: none !important; }
+  #app, .dashboard, .dashboard-shell, .dashboard-content { display: block !important; width: 100% !important; max-width: none !important; min-height: 0 !important; margin: 0 !important; padding: 0 !important; overflow: visible !important; color: #10213e !important; background: transparent !important; box-shadow: none !important; }
   .dashboard-sidebar, .dashboard-topbar, .dashboard-page-header, .report-toolbar { display: none !important; }
   .dashboard-section:not(.report-section) { display: none !important; }
-  .report-section { position: relative !important; display: block !important; margin: 0 !important; }
-  .report-section > .section-heading { position: relative; min-height: 29mm; align-items: flex-start; margin: 0 0 3mm !important; }
+  .report-section { position: relative !important; display: block !important; width: 100% !important; max-width: none !important; margin: 0 !important; }
+  .report-section > .section-heading { position: relative; display: flex !important; flex-direction: row !important; min-height: 31mm; align-items: flex-start; margin: 0 0 3mm !important; }
+  .report-heading-copy { box-sizing: border-box; width: 100%; padding-right: 46mm; }
   .report-section .section-heading h2 { margin: 0; color: #10213e !important; font-size: 26pt; line-height: 1.12; }
   .report-screen-title { display: none; }
   .report-print-title { display: inline; }
   .report-section .section-kicker { color: #176ee8 !important; font-size: 8pt; }
   .report-section .section-counter { color: #475569 !important; font-size: 9pt; }
-  .report-section .section-heading__action { position: absolute; right: 0; bottom: 0; width: auto; }
+  .report-section .section-heading__action { position: absolute; right: 0; bottom: 0; width: auto !important; justify-content: flex-end; }
   .report-print-button { display: none !important; }
   .report-branding-controls { display: none !important; }
   .report-print-company { display: block; margin: 1mm 0 0; color: #64748b !important; font-size: 13pt; line-height: 1.35; }
-  .report-print-identity { position: absolute; top: 0; right: 0; min-height: 0; margin: 0; }
+  .report-print-identity { position: absolute; top: 0; right: 0; display: flex; width: 40mm; min-height: 0; justify-content: flex-end; margin: 0; }
   .report-print-identity strong { display: none; }
-  .report-print-identity img { max-width: 42mm; max-height: 22mm; }
+  .report-print-identity img { width: auto; max-width: 40mm; max-height: 22mm; margin: 0; object-fit: contain; object-position: right top; }
   .report-print-context { display: grid; gap: 1mm; margin: 0 0 8mm; color: #52627a !important; font-size: 9pt; line-height: 1.4; }
   .report-print-context__item { display: flex; gap: 1.5mm; break-inside: avoid; }
   .report-print-context__item strong { color: #52627a !important; font-weight: 700; }
