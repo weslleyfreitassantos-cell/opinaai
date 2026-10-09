@@ -837,7 +837,7 @@ async function renderDashboard(root, user) {
     root.querySelector('#device-list').innerHTML = devices.length ? devices.map((device) => `
       <div class="device-row ${device.active ? '' : 'device-row--inactive'}">
         <div class="device-summary"><div class="device-name-row"><span class="status-dot ${device.runtime_status === 'online' ? 'status-dot--online' : 'status-dot--offline'}" aria-hidden="true"></span><strong>${escapeHtml(device.name)}</strong><span class="device-status-label">${device.runtime_status === 'online' ? 'Online' : 'Offline'}</span>${device.active ? '' : '<span class="status-pill status-pill--muted">Desativado</span>'}</div><small class="device-location">${escapeHtml(device.location_name || 'Sem unidade')} · Pesquisa: <strong>${escapeHtml(device.active_survey_title || 'Nenhuma')}</strong></small><details class="device-details"><summary>Ver detalhes</summary><div class="device-meta"><span>Visto ${device.last_seen_at ? escapeHtml(new Date(device.last_seen_at).toLocaleString('pt-BR')) : 'nunca'}</span><span>${escapeHtml(device.manufacturer || '—')} ${escapeHtml(device.model || '')} · Android ${escapeHtml(device.android_version || '—')}</span><span>Bateria ${device.battery_level === null || device.battery_level === undefined ? '—' : `${device.battery_level}%`}${device.charging === true ? ' · carregando' : ''} · ${escapeHtml(device.network_state || '—')}</span><span>Pendentes: ${device.pending_responses ?? '—'} · ${escapeHtml(device.orientation || '—')}</span></div></details></div>
-        <div class="device-assign"><div class="device-assign__primary"><select data-survey-for="${device.id}"><option value="">Escolha uma pesquisa</option>${surveys.map((survey) => `<option value="${survey.id}" ${String(survey.id) === String(device.active_survey_id) ? 'selected' : ''}>${escapeHtml(survey.title)}</option>`).join('')}</select><button class="outline-button assign-button" data-device="${device.id}">Aplicar</button></div><details class="device-actions"><summary>Gerenciar</summary><div class="device-actions__menu"><button class="outline-button refresh-config" data-device="${device.id}">Atualizar config.</button><button class="outline-button clear-survey" data-device="${device.id}">Remover pesquisa</button><button class="outline-button edit-device" data-device="${device.id}" data-name="${escapeHtml(device.name)}" data-location="${escapeHtml(device.location_name || '')}">Editar</button><button class="outline-button unpair-device" data-device="${device.id}">Desparear</button>${device.active ? `<button class="outline-button danger-button deactivate-device" data-device="${device.id}">Desativar</button>` : ''}</div></details></div>
+        <div class="device-assign"><div class="device-assign__primary"><select data-survey-for="${device.id}"><option value="">Escolha uma pesquisa</option>${surveys.map((survey) => `<option value="${survey.id}" ${String(survey.id) === String(device.active_survey_id) ? 'selected' : ''}>${escapeHtml(survey.title)}</option>`).join('')}</select><button class="outline-button assign-button" data-device="${device.id}">Aplicar</button><button class="outline-button preview-device" data-device="${device.id}" ${device.active_survey_id ? '' : 'disabled'}>Pré-visualizar</button></div><span class="device-preview-message" data-preview-message="${device.id}" role="status" aria-live="polite"></span><details class="device-actions"><summary>Gerenciar</summary><div class="device-actions__menu"><button class="outline-button refresh-config" data-device="${device.id}">Atualizar config.</button><button class="outline-button clear-survey" data-device="${device.id}">Remover pesquisa</button><button class="outline-button edit-device" data-device="${device.id}" data-name="${escapeHtml(device.name)}" data-location="${escapeHtml(device.location_name || '')}">Editar</button><button class="outline-button unpair-device" data-device="${device.id}">Desparear</button>${device.active ? `<button class="outline-button danger-button deactivate-device" data-device="${device.id}">Desativar</button>` : ''}</div></details></div>
       </div>`).join('') : '<p class="empty-state">Nenhum tablet pareado.</p>';
 
     root.querySelectorAll('.assign-button').forEach((button) => {
@@ -847,6 +847,38 @@ async function renderDashboard(root, user) {
         button.disabled = true;
         try { await api(`/api/devices/${button.dataset.device}/assign-survey`, { method: 'POST', body: JSON.stringify({ surveyId }) }); await loadDashboardData(); }
         finally { button.disabled = false; }
+      };
+    });
+
+    root.querySelectorAll('.preview-device').forEach((button) => {
+      const surveySelect = root.querySelector(`[data-survey-for="${button.dataset.device}"]`);
+      const message = root.querySelector(`[data-preview-message="${button.dataset.device}"]`);
+      surveySelect?.addEventListener('change', () => { button.disabled = !surveySelect.value; });
+      button.onclick = async () => {
+        const surveyId = surveySelect?.value;
+        if (!surveyId) return;
+        const previewWindow = window.open('about:blank', '_blank');
+        if (!previewWindow) {
+          if (message) message.textContent = 'Permita pop-ups para abrir a pré-visualização.';
+          return;
+        }
+        button.disabled = true;
+        if (message) message.textContent = '';
+        const originalLabel = button.textContent;
+        button.textContent = 'Carregando…';
+        try {
+          const survey = await api(`/api/surveys/${encodeURIComponent(surveyId)}`);
+          const previewId = crypto.randomUUID();
+          localStorage.setItem(`opina_survey_preview_${previewId}`, JSON.stringify(survey));
+          previewWindow.location.replace(`/tablet?preview=${encodeURIComponent(previewId)}`);
+          previewWindow.opener = null;
+        } catch (error) {
+          previewWindow.close();
+          if (message) message.textContent = error.message || 'Não foi possível abrir a pré-visualização.';
+        } finally {
+          button.textContent = originalLabel;
+          button.disabled = !surveySelect?.value;
+        }
       };
     });
 

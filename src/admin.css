@@ -447,6 +447,8 @@
 .device-assign__primary { display: flex; align-items: center; gap: 7px; }
 .device-assign__primary select { min-width: 0; flex: 1 1 auto; }
 .device-assign__primary .outline-button { flex: 0 0 auto; }
+.device-preview-message { color: var(--dash-danger, #b42318); font-size: .7rem; }
+.device-preview-message:empty { display: none; }
 .device-actions { align-self: flex-end; }
 .device-actions > summary { display: inline-flex; align-items: center; color: #6481aa; cursor: pointer; font-size: .7rem; font-weight: 800; list-style: none; }
 .device-actions > summary::-webkit-details-marker { display: none; }

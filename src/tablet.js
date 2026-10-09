@@ -208,6 +208,7 @@ export async function renderTablet(root) {
   let busy = false;
   let kioskUnlocked = false;
   let waitingForPairing = false;
+  let previewReadOnly = false;
   const browserTestMode = !isNativeRuntime();
 
   if (browserTestMode) {
@@ -234,7 +235,7 @@ export async function renderTablet(root) {
           options: [],
         }],
       }),
-    });
+    }, { readOnly: Boolean(previewId) });
     return;
   }
 
@@ -350,8 +351,9 @@ export async function renderTablet(root) {
     root.innerHTML = `<main class="tablet-shell"><section class="tablet-card waiting-card"><p class="tablet-kicker">${escapeHtml(deviceName || 'TABLET PAREADO')}</p><h1>Pronto para receber uma pesquisa</h1><p class="tablet-copy">Assim que uma pesquisa for associada no painel, ela aparecerá aqui automaticamente.</p><div class="waiting-dot" aria-hidden="true"></div></section></main>`;
   }
 
-  function renderSurvey(survey) {
+  function renderSurvey(survey, { readOnly = false } = {}) {
     activeSurvey = survey;
+    previewReadOnly = readOnly;
     const questions = Array.isArray(survey.questions) ? survey.questions : [];
     const ratingConfirmation = questions.length === 1 && ['emoji', 'stars'].includes(questions[0]?.type);
     const quickSubmit = questions.length === 1 && !ratingConfirmation;
@@ -362,11 +364,16 @@ export async function renderTablet(root) {
     const logoMarkup = logoData
       ? `<div class="survey-brand-logo-slot survey-brand-logo-slot--${logoPosition}"><img class="survey-brand-logo" src="${escapeHtml(logoData)}" alt="Logo da pesquisa"></div>`
       : '';
-    root.innerHTML = `<main class="tablet-shell"><section class="survey-kiosk${hasSideLogo ? ' survey-kiosk--logo-side' : ''}" data-logo-position="${logoPosition}">${logoPosition === 'bottom' ? '' : logoMarkup}<header>${headerText ? `<p class="tablet-kicker">${escapeHtml(headerText)}</p>` : ''}${browserTestMode ? '<p class="browser-test-badge">MODO DE TESTE · NENHUMA RESPOSTA É ENVIADA</p>' : ''}</header><form id="kiosk-form" data-quick-submit="${quickSubmit}">${questions.map(renderQuestion).join('')}${quickSubmit || ratingConfirmation ? '' : '<button class="kiosk-submit" type="submit">Enviar avaliação</button>'}</form>${logoPosition === 'bottom' ? logoMarkup : ''}<footer>Opina AI · Pesquisa de satisfação</footer></section></main>`;
+    const previewBadge = previewReadOnly
+      ? '<p class="tablet-preview-badge">PRÉ-VISUALIZAÇÃO · AVALIAÇÕES DESATIVADAS</p>'
+      : browserTestMode ? '<p class="browser-test-badge">MODO DE TESTE · NENHUMA RESPOSTA É ENVIADA</p>' : '';
+    const submitButton = previewReadOnly || quickSubmit || ratingConfirmation ? '' : '<button class="kiosk-submit" type="submit">Enviar avaliação</button>';
+    root.innerHTML = `<main class="tablet-shell"><section class="survey-kiosk${hasSideLogo ? ' survey-kiosk--logo-side' : ''}${previewReadOnly ? ' survey-kiosk--preview-readonly' : ''}" data-logo-position="${logoPosition}">${logoPosition === 'bottom' ? '' : logoMarkup}<header>${headerText ? `<p class="tablet-kicker">${escapeHtml(headerText)}</p>` : ''}${previewBadge}</header><form id="kiosk-form" data-quick-submit="${quickSubmit}">${questions.map(renderQuestion).join('')}${submitButton}</form>${logoPosition === 'bottom' ? logoMarkup : ''}<footer>Opina AI · Pesquisa de satisfação</footer></section></main>`;
     applySurveyBackground(root.querySelector('.survey-kiosk'), survey.branding);
     const form = root.querySelector('#kiosk-form');
-    form.onsubmit = submitSurvey;
-    if (quickSubmit) form.addEventListener('change', submitSurvey);
+    form.onsubmit = previewReadOnly ? (event) => event.preventDefault() : submitSurvey;
+    if (previewReadOnly) form.querySelectorAll('input,button').forEach((element) => { element.disabled = true; });
+    if (quickSubmit && !previewReadOnly) form.addEventListener('change', submitSurvey);
     form.querySelectorAll('.rating-grid').forEach((grid) => {
       const inputs = [...grid.querySelectorAll('input')];
       const confirmation = form.querySelector(`[data-rating-confirm="${grid.dataset.ratingQuestion}"]`);
@@ -401,7 +408,7 @@ export async function renderTablet(root) {
 
   async function submitSurvey(event) {
     event.preventDefault();
-    if (busy || !activeSurvey) return;
+    if (previewReadOnly || busy || !activeSurvey) return;
     const form = event.currentTarget;
     const values = new FormData(form);
     const answers = {};
