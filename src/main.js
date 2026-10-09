@@ -178,7 +178,9 @@ function openDialog({ title, description = '', fields = [], submitLabel = 'Salva
   const renderField = (field) => {
     const fieldName = String(field.name || 'field').replace(/[^a-z0-9_-]/gi, '');
     const fieldClass = `app-dialog__field app-dialog__field--${fieldName}`;
-    return field.type === 'emoji-config'
+    return field.type === 'survey-branding'
+    ? `<div class="${fieldClass} survey-editor-branding">${[field.logo, field.background].map((item) => `<section class="survey-editor-branding__item"><div class="survey-editor-branding__preview" ${item.previewSrc ? '' : 'aria-hidden="true"'}>${item.previewSrc ? `<img src="${escapeHtml(item.previewSrc)}" alt="${escapeHtml(item.previewAlt)}">` : `<span>${escapeHtml(item.emptyLabel)}</span>`}</div><h3>${escapeHtml(item.label)}</h3><p>${escapeHtml(item.hint)}</p><label class="survey-editor-branding__upload">Selecionar imagem<input name="${escapeHtml(item.name)}" type="file" accept="${escapeHtml(item.accept)}"></label><label class="app-dialog__checkbox survey-editor-branding__remove" ${item.removeHidden ? 'hidden' : ''}><input name="${escapeHtml(item.removeName)}" type="checkbox" value="true"><span>${escapeHtml(item.removeLabel)}</span></label></section>`).join('')}</div>`
+    : field.type === 'emoji-config'
     ? renderEmojiCustomizationFields(field.value, field.name, field.label || 'Personalizar carinhas animadas', fieldClass)
     : field.type === 'select'
       ? `<label class="${fieldClass}">${escapeHtml(field.label)}<select name="${escapeHtml(field.name)}" required>${field.options.map((option) => `<option value="${escapeHtml(option.value)}" ${String(option.value) === String(field.value) ? 'selected' : ''}>${escapeHtml(option.label)}</option>`).join('')}</select></label>`
@@ -999,10 +1001,22 @@ async function renderDashboard(root, user) {
             ] },
             { name: 'options', label: 'Opções separadas por vírgula', value: (question?.options || []).join(', '), required: false },
             { name: 'emoji-config', label: 'Personalizar carinhas animadas', value: normalizeEmojiOptions(question?.options), type: 'emoji-config' },
-            { name: 'logoFile', label: 'Logo desta pesquisa', type: 'file', accept: 'image/png,image/jpeg,image/webp', required: false, previewSrc: survey.branding?.logoData, hint: survey.brandingOverrides?.logo ? 'Logo personalizada atual. Selecione outra para substituir.' : 'Esta pesquisa ainda não tem logo própria. Selecione uma para exibir no tablet.' },
-            { name: 'removeLogo', label: 'Remover logo personalizada', type: 'checkbox', hidden: !survey.brandingOverrides?.logo },
-            { name: 'backgroundFile', label: 'Plano de fundo desta pesquisa', type: 'file', accept: 'image/png,image/jpeg,image/webp', required: false, previewSrc: survey.branding?.backgroundData, hint: survey.brandingOverrides?.background ? 'Fundo personalizado atual. Selecione outra imagem para substituir.' : 'Esta pesquisa ainda não tem fundo próprio. Selecione uma imagem para o tablet.' },
-            { name: 'removeBackground', label: 'Remover fundo personalizado', type: 'checkbox', hidden: !survey.brandingOverrides?.background },
+            {
+              name: 'survey-branding',
+              type: 'survey-branding',
+              logo: {
+                name: 'logoFile', label: 'Logo desta pesquisa', previewSrc: survey.branding?.logoData,
+                previewAlt: 'Logo atual da pesquisa', emptyLabel: 'Sem logo', accept: 'image/png,image/jpeg,image/webp',
+                hint: survey.brandingOverrides?.logo ? 'Logo atual. Selecione outra para substituir.' : 'Opcional. Aparece no tablet desta pesquisa.',
+                removeName: 'removeLogo', removeLabel: 'Remover logo personalizada', removeHidden: !survey.brandingOverrides?.logo,
+              },
+              background: {
+                name: 'backgroundFile', label: 'Plano de fundo', previewSrc: survey.branding?.backgroundData,
+                previewAlt: 'Plano de fundo atual da pesquisa', emptyLabel: 'Sem fundo', accept: 'image/png,image/jpeg,image/webp',
+                hint: survey.brandingOverrides?.background ? 'Fundo atual. Selecione outra imagem para substituir.' : 'Opcional. Aparece no tablet desta pesquisa.',
+                removeName: 'removeBackground', removeLabel: 'Remover fundo personalizado', removeHidden: !survey.brandingOverrides?.background,
+              },
+            },
           ],
         });
         if (!values) return;
