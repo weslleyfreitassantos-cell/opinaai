@@ -479,13 +479,13 @@
 .app-dialog__actions { display: flex; justify-content: flex-end; gap: 9px; margin-top: 24px; }
 .app-dialog__actions .submit-button.compact { margin-top: 0; }
 .app-dialog__actions .danger-button { color: #fff; border-color: #b43e4b; background: #b43e4b; }
-.app-dialog--survey { width: min(980px, calc(100vw - 32px)); max-height: calc(100dvh - 24px); overflow-y: auto; scrollbar-gutter: stable; }
+.app-dialog--survey { width: min(1120px, calc(100vw - 32px)); max-height: calc(100dvh - 24px); overflow-y: auto; scrollbar-gutter: stable; }
 .app-dialog--survey .app-dialog__form { padding: clamp(22px, 3vw, 34px); }
 .app-dialog--survey .app-dialog__fields { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 18px; margin-top: 19px; }
 .app-dialog--survey .app-dialog__field--emoji-config { grid-column: 1 / -1; }
 .app-dialog--survey .emoji-customizer { padding: 12px 16px; }
 .app-dialog--survey .emoji-customizer__hint { margin-bottom: 8px; }
-.app-dialog--survey .emoji-customizer__grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 12px; }
+.app-dialog--survey .emoji-customizer__grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px 12px; }
 .app-dialog--survey .emoji-customizer__row { grid-template-columns: 25px minmax(42px, .42fr) minmax(82px, 1fr) minmax(90px, .9fr); gap: 5px; }
 .app-dialog--survey .emoji-customizer__row input, .app-dialog--survey .emoji-customizer__row select { height: 38px; padding: 0 7px; font-size: .73rem; }
 .app-dialog--survey .emoji-customizer__score { width: 25px; height: 25px; }
