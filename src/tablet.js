@@ -213,23 +213,37 @@ export async function renderTablet(root) {
 
   if (browserTestMode) {
     const search = new URLSearchParams(location.search);
+    const previewHash = new URLSearchParams(location.hash.replace(/^#/, ''));
     const previewId = search.get('preview');
+    const previewToken = previewHash.get('previewToken');
     let previewSurvey = null;
-    if (previewId && /^[0-9a-f-]{36}$/i.test(previewId)) {
+    if (previewToken && /^[A-Za-z0-9_-]{43}$/.test(previewToken)) {
       try {
-        const payload = JSON.parse(window.name || 'null');
-        if (payload?.previewId === previewId && Array.isArray(payload.survey?.questions)) {
-          previewSurvey = payload.survey;
-          window.name = '';
-        }
-      } catch { /* Ignore invalid window payloads. */ }
+        const response = await fetch('/api/survey-previews', {
+          headers: { 'X-Survey-Preview-Token': previewToken },
+          cache: 'no-store',
+        });
+        if (response.ok) previewSurvey = (await response.json()).survey;
+      } catch { /* Expired or unreachable previews are shown as unavailable below. */ }
+    }
+    if (previewId && /^[0-9a-f-]{36}$/i.test(previewId)) {
+      if (!previewSurvey) {
+        try {
+          const payload = JSON.parse(window.name || 'null');
+          if (payload?.previewId === previewId && Array.isArray(payload.survey?.questions)) {
+            previewSurvey = payload.survey;
+            window.name = '';
+          }
+        } catch { /* Ignore invalid window payloads. */ }
+      }
       if (!previewSurvey) {
         const previewKey = `opina_survey_preview_${previewId}`;
         try { previewSurvey = JSON.parse(localStorage.getItem(previewKey) || 'null'); } catch { /* Ignore expired or invalid previews. */ }
-        localStorage.removeItem(previewKey);
+        try { localStorage.removeItem(previewKey); } catch { /* Ignore storage restrictions. */ }
       }
     }
-    if (previewId && (!previewSurvey || !Array.isArray(previewSurvey.questions))) {
+    const previewRequested = Boolean(previewToken || previewId);
+    if (previewRequested && (!previewSurvey || !Array.isArray(previewSurvey.questions))) {
       root.innerHTML = '<main class="tablet-shell"><section class="tablet-card"><p class="tablet-kicker">PRÉ-VISUALIZAÇÃO</p><h1>Prévia indisponível</h1><p class="tablet-copy">Volte ao painel e abra a pré-visualização novamente.</p></section></main>';
       return;
     }
@@ -244,7 +258,7 @@ export async function renderTablet(root) {
           options: [],
         }],
       }),
-    }, { readOnly: Boolean(previewId) });
+    }, { readOnly: previewRequested });
     return;
   }
 

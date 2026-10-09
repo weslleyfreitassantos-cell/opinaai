@@ -32,6 +32,9 @@ const DEFAULT_EMOJI_OPTIONS = [
   { value: '5', emoji: '😍', label: 'Ótimo', animation: 'heart' },
 ];
 const ALLOWED_EMOJI_ANIMATIONS = new Set(['shake', 'float', 'pulse', 'bounce', 'heart']);
+const surveyPreviews = new Map();
+const SURVEY_PREVIEW_TTL_MS = 10 * 60 * 1000;
+const SURVEY_PREVIEW_MAX_ENTRIES = 50;
 const allowedCorsOrigins = new Set(
   String(process.env.CORS_ORIGINS || '').split(',').map((origin) => origin.trim()).filter(Boolean),
 );
@@ -66,6 +69,26 @@ const pairingLimiter = rateLimit({
   legacyHeaders: false,
   message: { error: 'too_many_requests' },
 });
+const surveyPreviewLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 60,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  message: { error: 'too_many_requests' },
+});
+
+function storeSurveyPreview(survey) {
+  const now = Date.now();
+  for (const [token, preview] of surveyPreviews) {
+    if (preview.expiresAt <= now) surveyPreviews.delete(token);
+  }
+  while (surveyPreviews.size >= SURVEY_PREVIEW_MAX_ENTRIES) {
+    surveyPreviews.delete(surveyPreviews.keys().next().value);
+  }
+  const token = randomBytes(32).toString('base64url');
+  surveyPreviews.set(token, { survey, expiresAt: now + SURVEY_PREVIEW_TTL_MS });
+  return token;
+}
 
 function asPositiveInt(value) {
   const parsed = Number(value);
@@ -681,6 +704,31 @@ app.get('/api/surveys/:id', auth, asyncRoute(async (req, res) => {
   const branding = await loadSurveyBranding(surveyId);
   res.json({ ...result.rows[0], questions: questions.rows, ...branding });
 }));
+
+app.post('/api/surveys/:id/preview', auth, surveyPreviewLimiter, asyncRoute(async (req, res) => {
+  const surveyId = asPositiveInt(req.params.id);
+  const result = await pool.query('SELECT id,tenant_id,title,description,theme FROM surveys WHERE id=$1', [surveyId]);
+  if (!result.rowCount) return res.status(404).json({ error: 'Pesquisa não encontrada.' });
+  if (!canAccessTenant(req, result.rows[0].tenant_id)) return res.sendStatus(403);
+  const [questions, branding] = await Promise.all([
+    pool.query('SELECT id,text,type,position,options FROM questions WHERE survey_id=$1 ORDER BY position,id', [surveyId]),
+    loadSurveyBranding(surveyId),
+  ]);
+  const survey = { ...result.rows[0], questions: questions.rows, ...branding };
+  const token = storeSurveyPreview(survey);
+  res.set('Cache-Control', 'no-store').status(201).json({ token });
+}));
+
+app.get('/api/survey-previews', surveyPreviewLimiter, (req, res) => {
+  const token = String(req.get('x-survey-preview-token') || '');
+  if (!/^[A-Za-z0-9_-]{43}$/.test(token)) return res.status(404).json({ error: 'Prévia indisponível.' });
+  const preview = surveyPreviews.get(token);
+  if (!preview || preview.expiresAt <= Date.now()) {
+    surveyPreviews.delete(token);
+    return res.status(404).json({ error: 'Prévia expirada. Abra novamente pelo painel.' });
+  }
+  res.set('Cache-Control', 'no-store').json({ survey: preview.survey });
+});
 
 app.post('/api/surveys', auth, async (req, res) => {
   if (!requireManager(req, res)) return;

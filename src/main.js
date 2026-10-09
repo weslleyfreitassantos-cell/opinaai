@@ -75,6 +75,11 @@ function navigatePreviewWindow(previewWindow, previewId, survey) {
   previewWindow.opener = null;
 }
 
+function navigateServerPreviewWindow(previewWindow, token) {
+  previewWindow.location.replace(`/tablet#previewToken=${encodeURIComponent(token)}`);
+  previewWindow.opener = null;
+}
+
 if (nativeKiosk) {
   renderTablet(app).catch((error) => {
     console.error('Falha ao iniciar o kiosk Opina AI', error);
@@ -877,9 +882,8 @@ async function renderDashboard(root, user) {
         const originalLabel = button.textContent;
         button.textContent = 'Carregando…';
         try {
-          const survey = await api(`/api/surveys/${encodeURIComponent(surveyId)}`);
-          const previewId = crypto.randomUUID();
-          navigatePreviewWindow(previewWindow, previewId, survey);
+          const { token } = await api(`/api/surveys/${encodeURIComponent(surveyId)}/preview`, { method: 'POST' });
+          navigateServerPreviewWindow(previewWindow, token);
         } catch (error) {
           previewWindow.close();
           if (message) message.textContent = error.message || 'Não foi possível abrir a pré-visualização.';
