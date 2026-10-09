@@ -21,6 +21,7 @@ const DEFAULT_EMOJI_OPTIONS = [
   { value: '5', emoji: '😍', label: 'Ótimo', animation: 'heart' },
 ];
 const ALLOWED_EMOJI_ANIMATIONS = new Set(['shake', 'float', 'pulse', 'bounce', 'heart']);
+const ALLOWED_LOGO_POSITIONS = new Set(['top', 'left', 'right', 'bottom']);
 const MAX_PENDING = 200;
 
 function randomSecret() {
@@ -356,7 +357,12 @@ export async function renderTablet(root) {
     const quickSubmit = questions.length === 1 && !ratingConfirmation;
     const headerText = typeof survey.theme?.headerText === 'string' ? survey.theme.headerText : DEFAULT_SURVEY_HEADER;
     const logoData = safeImageDataUrl(survey.branding?.logoData);
-    root.innerHTML = `<main class="tablet-shell"><section class="survey-kiosk"><header>${logoData ? `<img class="survey-brand-logo" src="${escapeHtml(logoData)}" alt="Logo da empresa">` : ''}${headerText ? `<p class="tablet-kicker">${escapeHtml(headerText)}</p>` : ''}${browserTestMode ? '<p class="browser-test-badge">MODO DE TESTE · NENHUMA RESPOSTA É ENVIADA</p>' : ''}</header><form id="kiosk-form" data-quick-submit="${quickSubmit}">${questions.map(renderQuestion).join('')}${quickSubmit || ratingConfirmation ? '' : '<button class="kiosk-submit" type="submit">Enviar avaliação</button>'}</form><footer>Opina AI · Pesquisa de satisfação</footer></section></main>`;
+    const logoPosition = ALLOWED_LOGO_POSITIONS.has(survey.theme?.logoPosition) ? survey.theme.logoPosition : 'top';
+    const hasSideLogo = logoData && ['left', 'right'].includes(logoPosition);
+    const logoMarkup = logoData
+      ? `<div class="survey-brand-logo-slot survey-brand-logo-slot--${logoPosition}"><img class="survey-brand-logo" src="${escapeHtml(logoData)}" alt="Logo da pesquisa"></div>`
+      : '';
+    root.innerHTML = `<main class="tablet-shell"><section class="survey-kiosk${hasSideLogo ? ' survey-kiosk--logo-side' : ''}" data-logo-position="${logoPosition}">${logoPosition === 'bottom' ? '' : logoMarkup}<header>${headerText ? `<p class="tablet-kicker">${escapeHtml(headerText)}</p>` : ''}${browserTestMode ? '<p class="browser-test-badge">MODO DE TESTE · NENHUMA RESPOSTA É ENVIADA</p>' : ''}</header><form id="kiosk-form" data-quick-submit="${quickSubmit}">${questions.map(renderQuestion).join('')}${quickSubmit || ratingConfirmation ? '' : '<button class="kiosk-submit" type="submit">Enviar avaliação</button>'}</form>${logoPosition === 'bottom' ? logoMarkup : ''}<footer>Opina AI · Pesquisa de satisfação</footer></section></main>`;
     applySurveyBackground(root.querySelector('.survey-kiosk'), survey.branding);
     const form = root.querySelector('#kiosk-form');
     form.onsubmit = submitSurvey;
@@ -444,7 +450,13 @@ export async function renderTablet(root) {
     const title = browserTestMode ? 'Teste concluído' : 'Obrigado pela sua opinião!';
     const copy = browserTestMode ? 'Nenhuma resposta foi enviada ou salva. Este tablet do navegador serve apenas para testar a experiência.' : (queued ? 'A avaliação ficou salva neste tablet e será sincronizada quando a conexão voltar.' : 'Sua avaliação foi registrada com sucesso.');
     const logoData = safeImageDataUrl(activeSurvey?.branding?.logoData);
-    root.innerHTML = `<main class="tablet-shell"><section class="tablet-card thanks-card">${logoData ? `<img class="survey-brand-logo" src="${escapeHtml(logoData)}" alt="Logo da empresa">` : ''}<div class="thanks-icon">✓</div><h1>${title}</h1><p class="tablet-copy">${copy}</p></section></main>`;
+    const logoPosition = ALLOWED_LOGO_POSITIONS.has(activeSurvey?.theme?.logoPosition) ? activeSurvey.theme.logoPosition : 'top';
+    const hasSideLogo = logoData && ['left', 'right'].includes(logoPosition);
+    const logoMarkup = logoData
+      ? `<div class="survey-brand-logo-slot survey-brand-logo-slot--${logoPosition}"><img class="survey-brand-logo" src="${escapeHtml(logoData)}" alt="Logo da pesquisa"></div>`
+      : '';
+    const thanksMarkup = `<div class="thanks-content"><div class="thanks-icon">✓</div><h1>${title}</h1><p class="tablet-copy">${copy}</p></div>`;
+    root.innerHTML = `<main class="tablet-shell"><section class="tablet-card thanks-card${hasSideLogo ? ' thanks-card--logo-side' : ''}" data-logo-position="${logoPosition}">${logoPosition === 'bottom' ? thanksMarkup + logoMarkup : logoMarkup + thanksMarkup}</section></main>`;
     applySurveyBackground(root.querySelector('.thanks-card'), activeSurvey?.branding);
   }
 

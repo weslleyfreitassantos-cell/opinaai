@@ -82,6 +82,10 @@ function normalizeSurveyHeaderText(value) {
   return value.trim().slice(0, 120);
 }
 
+function normalizeSurveyLogoPosition(value) {
+  return ['top', 'left', 'right', 'bottom'].includes(value) ? value : null;
+}
+
 function sha256(value) {
   return createHash('sha256').update(String(value)).digest('hex');
 }
@@ -686,8 +690,9 @@ app.post('/api/surveys', auth, async (req, res) => {
   const headerText = req.body?.headerText === undefined
     ? 'SUA OPINIÃO IMPORTA'
     : normalizeSurveyHeaderText(req.body.headerText);
+  const logoPosition = req.body?.logoPosition === undefined ? 'top' : normalizeSurveyLogoPosition(req.body.logoPosition);
   const questions = normalizeQuestions(req.body?.questions);
-  if (!tenantId || !(await tenantExists(tenantId)) || !title || !questions || headerText === null) {
+  if (!tenantId || !(await tenantExists(tenantId)) || !title || !questions || headerText === null || !logoPosition) {
     return res.status(400).json({ error: 'Empresa, título, texto acima da avaliação e ao menos uma pergunta são obrigatórios.' });
   }
   const surveyImages = [];
@@ -705,7 +710,7 @@ app.post('/api/surveys', auth, async (req, res) => {
     await client.query('BEGIN');
     const survey = await client.query(
       'INSERT INTO surveys(tenant_id,title,description,theme) VALUES($1,$2,$3,$4::jsonb) RETURNING *',
-      [tenantId, title, description || null, JSON.stringify({ headerText })],
+      [tenantId, title, description || null, JSON.stringify({ headerText, logoPosition })],
     );
     createdSurveyId = survey.rows[0].id;
     for (const question of questions) {
@@ -778,10 +783,16 @@ app.patch('/api/surveys/:id', auth, asyncRoute(async (req, res) => {
   const description = cleanText(req.body?.description, 1000);
   const hasHeaderText = req.body?.headerText !== undefined;
   const headerText = hasHeaderText ? normalizeSurveyHeaderText(req.body.headerText) : null;
+  const hasLogoPosition = req.body?.logoPosition !== undefined;
+  const logoPosition = hasLogoPosition ? normalizeSurveyLogoPosition(req.body.logoPosition) : null;
   const questions = req.body?.questions === undefined ? null : normalizeQuestions(req.body.questions);
   if (req.body?.questions !== undefined && !questions) return res.status(400).json({ error: 'Revise as perguntas e opções da pesquisa.' });
   if (req.body?.title !== undefined && !title) return res.status(400).json({ error: 'O título é obrigatório.' });
   if (hasHeaderText && headerText === null) return res.status(400).json({ error: 'O texto acima da avaliação é inválido.' });
+  if (hasLogoPosition && !logoPosition) return res.status(400).json({ error: 'A posição da logo é inválida.' });
+  const themeChanges = {};
+  if (hasHeaderText) themeChanges.headerText = headerText;
+  if (hasLogoPosition) themeChanges.logoPosition = logoPosition;
   const published = req.body?.published === undefined ? null : Boolean(req.body.published);
   const client = await pool.connect();
   try {
@@ -792,7 +803,7 @@ app.patch('/api/surveys/:id', auth, asyncRoute(async (req, res) => {
               theme=CASE WHEN $4::jsonb IS NULL THEN theme ELSE COALESCE(theme,'{}'::jsonb) || $4::jsonb END
         WHERE id=$5`,
       [req.body?.title === undefined ? null : title, req.body?.description === undefined ? null : description, published,
-        hasHeaderText ? JSON.stringify({ headerText }) : null, surveyId],
+        Object.keys(themeChanges).length ? JSON.stringify(themeChanges) : null, surveyId],
     );
     if (questions) {
       await client.query('DELETE FROM questions WHERE survey_id=$1', [surveyId]);

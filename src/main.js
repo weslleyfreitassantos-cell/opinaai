@@ -21,6 +21,12 @@ const EMOJI_ANIMATION_OPTIONS = [
   { value: 'bounce', label: 'Quicar' },
   { value: 'heart', label: 'Brilhar' },
 ];
+const SURVEY_LOGO_POSITION_OPTIONS = [
+  { value: 'top', label: 'Superior' },
+  { value: 'left', label: 'Esquerda' },
+  { value: 'right', label: 'Direita' },
+  { value: 'bottom', label: 'Embaixo' },
+];
 
 function normalizeEmojiOptions(options) {
   return DEFAULT_EMOJI_OPTIONS.map((fallback, index) => {
@@ -355,7 +361,7 @@ async function renderDashboard(root, user) {
         </section>
         <section id="surveys" class="dashboard-section" data-dashboard-view="surveys">
           <div class="section-heading"><div><p class="section-kicker">CONTEÚDO</p><h2>Pesquisas</h2></div></div>
-          <article class="dashboard-card action-card action-card--survey"><div class="action-card__icon" aria-hidden="true">${dashboardIcon('survey')}</div><div class="action-card__intro"><h3>Nova pesquisa</h3><p>Crie a pergunta exibida no tablet.</p></div><form id="survey-form" class="form-stack"><div class="form-grid"><label>Título da pesquisa<input name="title" required placeholder="Ex.: Experiência de atendimento"></label><label>Pergunta para o cliente<input name="question" required value="${DEFAULT_RATING_QUESTION}" placeholder="Digite a pergunta exibida no tablet"></label></div><label>Texto acima das avaliações<input name="headerText" maxlength="120" value="${DEFAULT_SURVEY_HEADER}" placeholder="Ex.: SUA OPINIÃO IMPORTA"></label><div class="survey-branding-fields"><div class="report-branding-item"><div class="report-logo-preview"><img id="survey-logo-preview" alt="Prévia da logo desta pesquisa" hidden><span id="survey-logo-placeholder" aria-hidden="true">Logo</span></div><div class="report-branding-copy"><strong>Logo da pesquisa</strong><small>Opcional. Aparece no tablet desta pesquisa; não altera a logo do relatório.</small><p id="survey-logo-message" role="status" aria-live="polite"></p></div><div class="report-branding-actions"><label class="outline-button report-logo-select">Selecionar logo<input id="survey-logo-input" type="file" accept="image/png,image/jpeg,image/webp"></label><button id="remove-survey-logo" class="outline-button" type="button" disabled>Remover</button></div></div><div class="report-branding-item"><div class="report-background-preview"><img id="survey-background-preview" alt="Prévia do fundo desta pesquisa" hidden><span id="survey-background-placeholder" aria-hidden="true">Fundo</span></div><div class="report-branding-copy"><strong>Plano de fundo</strong><small>Opcional. Aparece somente na tela do tablet desta pesquisa.</small><p id="survey-background-message" role="status" aria-live="polite"></p></div><div class="report-branding-actions"><label class="outline-button report-logo-select">Selecionar imagem<input id="survey-background-input" type="file" accept="image/png,image/jpeg,image/webp"></label><button id="remove-survey-background" class="outline-button" type="button" disabled>Remover</button></div></div></div><label>Tipo de resposta<select name="type"><option value="emoji">Carinhas animadas</option><option value="stars">Estrelas (1 a 5)</option><option value="scale">Nota de 1 a 10</option><option value="options">Opções personalizadas</option></select></label>${renderEmojiCustomizationFields()}<label class="options-field is-hidden">Opções separadas por vírgula<input class="options-field is-hidden" name="options" placeholder="Ótimo, Bom, Regular, Ruim"></label><div class="form-submit-row"><button id="preview-survey" class="outline-button submit-button compact" type="button">Pré-visualizar <span aria-hidden="true">↗</span></button><button class="submit-button compact" type="submit">Cadastrar pesquisa <span aria-hidden="true">→</span></button><p class="inline-message" id="survey-message" role="status"></p></div></form></article>
+          <article class="dashboard-card action-card action-card--survey"><div class="action-card__icon" aria-hidden="true">${dashboardIcon('survey')}</div><div class="action-card__intro"><h3>Nova pesquisa</h3><p>Crie a pergunta exibida no tablet.</p></div><form id="survey-form" class="form-stack"><div class="form-grid"><label>Título da pesquisa<input name="title" required placeholder="Ex.: Experiência de atendimento"></label><label>Pergunta para o cliente<input name="question" required value="${DEFAULT_RATING_QUESTION}" placeholder="Digite a pergunta exibida no tablet"></label></div><label>Texto acima das avaliações<input name="headerText" maxlength="120" value="${DEFAULT_SURVEY_HEADER}" placeholder="Ex.: SUA OPINIÃO IMPORTA"></label><div class="survey-branding-fields"><div class="report-branding-item"><div class="report-logo-preview"><img id="survey-logo-preview" alt="Prévia da logo desta pesquisa" hidden><span id="survey-logo-placeholder" aria-hidden="true">Logo</span></div><div class="report-branding-copy"><strong>Logo da pesquisa</strong><small>Opcional. Aparece no tablet desta pesquisa; não altera a logo do relatório.</small><p id="survey-logo-message" role="status" aria-live="polite"></p></div><div class="report-branding-actions"><label class="outline-button report-logo-select">Selecionar logo<input id="survey-logo-input" type="file" accept="image/png,image/jpeg,image/webp"></label><button id="remove-survey-logo" class="outline-button" type="button" disabled>Remover</button></div></div><div class="report-branding-item"><div class="report-background-preview"><img id="survey-background-preview" alt="Prévia do fundo desta pesquisa" hidden><span id="survey-background-placeholder" aria-hidden="true">Fundo</span></div><div class="report-branding-copy"><strong>Plano de fundo</strong><small>Opcional. Aparece somente na tela do tablet desta pesquisa.</small><p id="survey-background-message" role="status" aria-live="polite"></p></div><div class="report-branding-actions"><label class="outline-button report-logo-select">Selecionar imagem<input id="survey-background-input" type="file" accept="image/png,image/jpeg,image/webp"></label><button id="remove-survey-background" class="outline-button" type="button" disabled>Remover</button></div></div></div><label>Posição da logo no tablet<select name="logoPosition">${SURVEY_LOGO_POSITION_OPTIONS.map((option) => `<option value="${option.value}">${option.label}</option>`).join('')}</select></label><label>Tipo de resposta<select name="type"><option value="emoji">Carinhas animadas</option><option value="stars">Estrelas (1 a 5)</option><option value="scale">Nota de 1 a 10</option><option value="options">Opções personalizadas</option></select></label>${renderEmojiCustomizationFields()}<label class="options-field is-hidden">Opções separadas por vírgula<input class="options-field is-hidden" name="options" placeholder="Ótimo, Bom, Regular, Ruim"></label><div class="form-submit-row"><button id="preview-survey" class="outline-button submit-button compact" type="button">Pré-visualizar <span aria-hidden="true">↗</span></button><button class="submit-button compact" type="submit">Cadastrar pesquisa <span aria-hidden="true">→</span></button><p class="inline-message" id="survey-message" role="status"></p></div></form></article>
           <div class="dashboard-card"><div id="survey-list" class="survey-list">Carregando...</div></div>
         </section>
         <section id="reports" class="dashboard-section report-section" data-dashboard-view="reports">
@@ -572,7 +578,7 @@ async function renderDashboard(root, user) {
       const survey = {
         id: 'preview-questionnaire',
         title: form.get('title'),
-        theme: { headerText: form.get('headerText') },
+        theme: { headerText: form.get('headerText'), logoPosition: form.get('logoPosition') || 'top' },
         branding: {
           logoData: surveyBrandingDraft.logoData || '',
           backgroundData: surveyBrandingDraft.backgroundData || '',
@@ -609,6 +615,7 @@ async function renderDashboard(root, user) {
       title: form.get('title'),
       description: form.get('question'),
       headerText: form.get('headerText'),
+      logoPosition: form.get('logoPosition') || 'top',
       logoData: surveyBrandingDraft.logoData,
       backgroundData: surveyBrandingDraft.backgroundData,
       questions: [{ text: form.get('question'), type, options }],
@@ -939,6 +946,7 @@ async function renderDashboard(root, user) {
             { name: 'title', label: 'Título da pesquisa', value: survey.title },
             { name: 'headerText', label: 'Texto acima das avaliações', value: typeof survey.theme?.headerText === 'string' ? survey.theme.headerText : DEFAULT_SURVEY_HEADER, maxLength: 120, required: false },
             { name: 'questionText', label: 'Pergunta para o cliente', value: question?.text || survey.description || '' },
+            { name: 'logoPosition', label: 'Posição da logo no tablet', type: 'select', value: survey.theme?.logoPosition || 'top', options: SURVEY_LOGO_POSITION_OPTIONS },
             { name: 'type', label: 'Tipo de resposta', value: question?.type || 'emoji', type: 'select', options: [
               { value: 'emoji', label: 'Carinhas animadas' },
               { value: 'stars', label: 'Estrelas (1 a 5)' },
@@ -962,7 +970,7 @@ async function renderDashboard(root, user) {
           else if (values.removeLogo) brandingUpdate.logoData = null;
           if (values.backgroundFile?.size) brandingUpdate.backgroundData = await prepareTenantImage(values.backgroundFile, 'background');
           else if (values.removeBackground) brandingUpdate.backgroundData = null;
-          await api(`/api/surveys/${survey.id}`, { method: 'PATCH', body: JSON.stringify({ title: values.title, headerText: values.headerText, description: values.questionText, questions: [nextQuestion] }) });
+          await api(`/api/surveys/${survey.id}`, { method: 'PATCH', body: JSON.stringify({ title: values.title, headerText: values.headerText, logoPosition: values.logoPosition, description: values.questionText, questions: [nextQuestion] }) });
           if (Object.keys(brandingUpdate).length) {
             await api(`/api/surveys/${survey.id}/branding`, { method: 'PUT', body: JSON.stringify(brandingUpdate) });
           }
