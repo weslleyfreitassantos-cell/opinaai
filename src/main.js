@@ -360,8 +360,7 @@ async function renderDashboard(root, user) {
             </div>
             <div class="section-heading__action"><span id="report-total" class="section-counter">Carregando...</span><button id="print-report" class="outline-button report-print-button" type="button"><span aria-hidden="true">${dashboardIcon('printer')}</span>Imprimir relatório</button></div>
           </div>
-          ${['SUPERADMIN', 'ADMIN'].includes(user.role) ? `<article id="report-branding-controls" class="dashboard-card report-branding-controls"><div class="report-branding-item"><div class="report-logo-preview"><img id="tenant-logo-preview" alt="Prévia da logo da empresa" hidden><span id="tenant-logo-placeholder" aria-hidden="true">${dashboardIcon('spark')}</span></div><div class="report-branding-copy"><strong>Logo da empresa</strong><small>PNG, JPEG ou WebP. Aparece no relatório impresso e na pesquisa do tablet.</small><p id="tenant-logo-message" role="status" aria-live="polite"></p></div><div class="report-branding-actions"><label class="outline-button report-logo-select">Selecionar logo<input id="tenant-logo-input" type="file" accept="image/png,image/jpeg,image/webp"></label><button id="remove-tenant-logo" class="outline-button" type="button" disabled>Remover</button></div></div><div class="report-branding-item"><div class="report-background-preview"><img id="tenant-background-preview" alt="Prévia do plano de fundo" hidden><span id="tenant-background-placeholder" aria-hidden="true">Imagem</span></div><div class="report-branding-copy"><strong>Plano de fundo</strong><small>Aparece na pesquisa do tablet e ao imprimir o relatório.</small><p id="tenant-background-message" role="status" aria-live="polite"></p></div><div class="report-branding-actions"><label class="outline-button report-logo-select">Selecionar imagem<input id="tenant-background-input" type="file" accept="image/png,image/jpeg,image/webp"></label><button id="remove-tenant-background" class="outline-button" type="button" disabled>Remover</button></div></div></article>` : ''}
-          <img id="report-print-background" class="report-print-background" alt="" hidden>
+          ${['SUPERADMIN', 'ADMIN'].includes(user.role) ? `<article id="report-branding-controls" class="dashboard-card report-branding-controls"><div class="report-branding-item"><div class="report-logo-preview"><img id="tenant-logo-preview" alt="Prévia da logo da empresa" hidden><span id="tenant-logo-placeholder" aria-hidden="true">${dashboardIcon('spark')}</span></div><div class="report-branding-copy"><strong>Logo da empresa</strong><small>PNG, JPEG ou WebP. Aparece no relatório impresso e na pesquisa do tablet.</small><p id="tenant-logo-message" role="status" aria-live="polite"></p></div><div class="report-branding-actions"><label class="outline-button report-logo-select">Selecionar logo<input id="tenant-logo-input" type="file" accept="image/png,image/jpeg,image/webp"></label><button id="remove-tenant-logo" class="outline-button" type="button" disabled>Remover</button></div></div><div class="report-branding-item"><div class="report-background-preview"><img id="tenant-background-preview" alt="Prévia do plano de fundo" hidden><span id="tenant-background-placeholder" aria-hidden="true">Imagem</span></div><div class="report-branding-copy"><strong>Plano de fundo</strong><small>Aparece somente na pesquisa do tablet.</small><p id="tenant-background-message" role="status" aria-live="polite"></p></div><div class="report-branding-actions"><label class="outline-button report-logo-select">Selecionar imagem<input id="tenant-background-input" type="file" accept="image/png,image/jpeg,image/webp"></label><button id="remove-tenant-background" class="outline-button" type="button" disabled>Remover</button></div></div></article>` : ''}
           <p id="report-print-context" class="report-print-context"></p>
           <div class="dashboard-card report-card"><div class="report-toolbar"><div class="date-row"><label>De <input id="from" type="date"></label><label>Até <input id="to" type="date"></label></div><div class="report-filters"><label>Pesquisa<select id="report-survey"><option value="">Todas</option></select></label><label>Unidade<select id="report-location"><option value="">Todas</option></select></label><label>Tablet<select id="report-device"><option value="">Todos</option></select></div><button id="load-report" class="outline-button" type="button">Atualizar <span aria-hidden="true">↻</span></button></div><div class="report-results"><div class="report-results__header"><h3>Distribuição</h3><span>Respostas por avaliação</span></div><div id="report-distribution" class="distribution-list"></div><div id="report-list" class="report-list"></div></div></div>
         </section>
@@ -536,7 +535,7 @@ async function renderDashboard(root, user) {
     printReportButton.disabled = true;
     try {
       await loadDashboardData();
-      const printImages = [root.querySelector('#report-company-logo'), root.querySelector('#report-print-background')];
+      const printImages = [root.querySelector('#report-company-logo')];
       await Promise.all(printImages.filter((image) => image && !image.hidden && image.decode).map((image) => image.decode().catch(() => {})));
       window.print();
     } finally {
@@ -555,13 +554,11 @@ async function renderDashboard(root, user) {
     placeholder: root.querySelector(asset.placeholderId),
     message: root.querySelector(asset.messageId),
   }));
-  const reportPrintBackground = root.querySelector('#report-print-background');
   let brandingTenantId = null;
   let tenantBranding = null;
 
   function applyTenantBranding(branding) {
     const logoData = branding?.logoData || '';
-    const backgroundData = branding?.backgroundData || '';
     const reportIdentity = root.querySelector('.report-print-identity');
     const reportCompanyName = root.querySelector('#report-company-name');
     const reportLogo = root.querySelector('#report-company-logo');
@@ -576,11 +573,6 @@ async function renderDashboard(root, user) {
       } else {
         reportLogo.removeAttribute('src');
       }
-    }
-    if (reportPrintBackground) {
-      reportPrintBackground.hidden = !backgroundData;
-      if (backgroundData) reportPrintBackground.src = backgroundData;
-      else reportPrintBackground.removeAttribute('src');
     }
     for (const asset of brandingAssets) {
       const imageData = branding?.[asset.field] || '';
@@ -643,7 +635,7 @@ async function renderDashboard(root, user) {
         }
         if (asset.message) asset.message.textContent = asset.kind === 'logo'
           ? 'Logo salva para o relatório e os tablets.'
-          : 'Plano de fundo salvo para o relatório e os tablets.';
+          : 'Plano de fundo salvo para a pesquisa no tablet.';
       } catch (error) {
         if (asset.message) asset.message.textContent = error.message;
       } finally {
