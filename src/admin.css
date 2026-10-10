@@ -407,8 +407,8 @@
 .dashboard-page-header h1 { margin: 7px 0 4px; color: var(--dash-ink); font-size: clamp(1.85rem, 3vw, 2.45rem); letter-spacing: -.055em; }
 .page-subtitle { margin: 0; color: var(--dash-muted); font-size: .84rem; }
 .tenant-select { display: flex; flex: 0 1 310px; flex-direction: column; gap: 7px; margin: 0; color: #64748a; font-size: .7rem; font-weight: 800; }
-.tenant-select select { width: 100%; height: 43px; padding: 0 12px; border: 1px solid #d2dfef; border-radius: 10px; outline: none; color: var(--dash-ink); background: #fff; font-size: .8rem; }
-.tenant-select select:focus { border-color: #5a9af1; box-shadow: 0 0 0 4px rgba(23, 110, 232, .1); }
+.tenant-select input { width: 100%; height: 43px; padding: 0 12px; border: 1px solid #d2dfef; border-radius: 10px; outline: none; color: var(--dash-ink); background: #fff; font-size: .8rem; }
+.tenant-select input:focus { border-color: #5a9af1; box-shadow: 0 0 0 4px rgba(23, 110, 232, .1); }
 .overview-section { margin-top: 27px; }
 .overview-section .section-heading { margin-bottom: 14px; }
 .section-heading h2 { margin-top: 0; font-size: clamp(1.25rem, 2vw, 1.65rem); }
