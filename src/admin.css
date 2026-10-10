@@ -84,9 +84,11 @@
 .sidebar-note strong { display: block; color: #f5f9ff; font-size: .82rem; }
 .sidebar-note p { margin: 6px 0 0; color: #8fa9cf; font-size: .73rem; line-height: 1.5; }
 .sidebar-profile { display: flex; align-items: center; gap: 10px; margin-top: auto; padding: 16px 10px 0; border-top: 1px solid rgba(136, 177, 241, .13); }
-.sidebar-profile strong, .sidebar-profile span { display: block; max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.sidebar-profile strong { color: #f5f9ff; font-size: .76rem; }
-.sidebar-profile span { margin-top: 3px; color: #8fa9cf; font-size: .68rem; }
+.sidebar-profile__details { min-width: 0; }
+.sidebar-profile__company, .sidebar-profile__email { display: block; max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sidebar-profile__company { color: #f5f9ff; font-size: .76rem; }
+.sidebar-profile__email { margin-top: 3px; color: #8fa9cf; font-size: .68rem; }
+.sidebar-profile__role { display: block; margin-top: 3px; color: #8fa9cf; font-size: .64rem; }
 
 .dashboard-content { min-width: 0; padding: 0 clamp(24px, 4vw, 66px) 80px; overflow: hidden; }
 .dashboard-topbar { display: flex; align-items: center; justify-content: space-between; min-height: 82px; border-bottom: 1px solid var(--dash-line); }
@@ -405,8 +407,8 @@
 .dashboard-page-header h1 { margin: 7px 0 4px; color: var(--dash-ink); font-size: clamp(1.85rem, 3vw, 2.45rem); letter-spacing: -.055em; }
 .page-subtitle { margin: 0; color: var(--dash-muted); font-size: .84rem; }
 .tenant-select { display: flex; flex: 0 1 310px; flex-direction: column; gap: 7px; margin: 0; color: #64748a; font-size: .7rem; font-weight: 800; }
-.tenant-select select { width: 100%; height: 43px; padding: 0 12px; border: 1px solid #d2dfef; border-radius: 10px; outline: none; color: var(--dash-ink); background: #fff; font-size: .8rem; }
-.tenant-select select:focus { border-color: #5a9af1; box-shadow: 0 0 0 4px rgba(23, 110, 232, .1); }
+.tenant-select input { width: 100%; height: 43px; padding: 0 12px; border: 1px solid #d2dfef; border-radius: 10px; outline: none; color: var(--dash-ink); background: #fff; font-size: .8rem; }
+.tenant-select input:focus { border-color: #5a9af1; box-shadow: 0 0 0 4px rgba(23, 110, 232, .1); }
 .overview-section { margin-top: 27px; }
 .overview-section .section-heading { margin-bottom: 14px; }
 .section-heading h2 { margin-top: 0; font-size: clamp(1.25rem, 2vw, 1.65rem); }

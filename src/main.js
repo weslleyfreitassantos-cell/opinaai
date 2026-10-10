@@ -347,7 +347,8 @@ async function renderDashboard(root, user) {
   if (user.role === 'SUPERADMIN') tenants = await api('/api/tenants');
   if (!selectedTenantId && tenants.length) selectedTenantId = tenants[0].id;
 
-  const tenantOptions = () => tenants.map((tenant) => `<option value="${tenant.id}" ${String(tenant.id) === String(selectedTenantId) ? 'selected' : ''}>${escapeHtml(tenant.name)}</option>`).join('');
+  const tenantOptions = () => tenants.map((tenant) => `<option value="${escapeHtml(tenant.name)}"></option>`).join('');
+  const selectedTenantName = () => tenants.find((tenant) => String(tenant.id) === String(selectedTenantId))?.name || '';
   const tenantListMarkup = () => tenants.length
     ? tenants.map((tenant) => `<div class="tenant-row"><div><strong>${escapeHtml(tenant.name)}</strong><small>${escapeHtml(tenant.adminEmail || 'Administrador não cadastrado')} · Tablets ativos: ${Number(tenant.activeDevices || 0)} / ${Number(tenant.deviceLimit || 1)}</small></div><button class="outline-button edit-tenant" type="button" data-tenant-id="${tenant.id}">Editar empresa</button></div>`).join('')
     : '<p class="empty-state">Nenhuma empresa cadastrada.</p>';
@@ -365,7 +366,7 @@ async function renderDashboard(root, user) {
           <a class="dashboard-nav__item" data-view="reports" href="#reports"><span aria-hidden="true">${dashboardIcon('chart')}</span> Relatórios</a>
           ${user.role === 'SUPERADMIN' ? `<a class="dashboard-nav__item" data-view="administration" href="#administration"><span aria-hidden="true">${dashboardIcon('building')}</span> Administração</a>` : ''}
         </nav>
-        <div class="sidebar-profile"><div><strong>${escapeHtml(user.name)}</strong><span>${user.role === 'SUPERADMIN' ? 'Superadministrador' : 'Administrador'}</span></div></div>
+        <div class="sidebar-profile"><div class="sidebar-profile__details"><strong class="sidebar-profile__company" id="sidebar-company-name">${escapeHtml(tenants.find((tenant) => String(tenant.id) === String(selectedTenantId))?.name || 'Carregando empresa…')}</strong><span class="sidebar-profile__email">${escapeHtml(user.email)}</span><small class="sidebar-profile__role">${user.role === 'SUPERADMIN' ? 'Superadministrador' : 'Administrador'}</small></div></div>
       </aside>
       <section class="dashboard-content">
         <header class="dashboard-topbar">
@@ -374,7 +375,7 @@ async function renderDashboard(root, user) {
         </header>
         <section id="overview" class="dashboard-page-header">
           <div><p class="section-kicker">PAINEL</p><h1 id="page-title">Visão geral</h1><p id="page-subtitle" class="page-subtitle">Acompanhe as avaliações e a operação dos tablets.</p></div>
-          ${user.role === 'SUPERADMIN' ? `<label class="tenant-select"><span>Empresa</span><select id="tenant-filter" aria-label="Empresa">${tenantOptions()}</select></label>` : ''}
+          ${user.role === 'SUPERADMIN' ? `<label class="tenant-select"><span>Pesquisar empresa</span><input id="tenant-filter" type="search" list="tenant-options" aria-label="Pesquisar empresa" placeholder="Digite o nome da empresa" autocomplete="off" value="${escapeHtml(selectedTenantName())}"><datalist id="tenant-options">${tenantOptions()}</datalist></label>` : ''}
         </section>
         <section class="dashboard-section overview-section" data-dashboard-view="overview">
           <div class="section-heading"><div><h2>Resumo</h2></div><span class="section-counter">Período atual</span></div>
@@ -421,7 +422,7 @@ async function renderDashboard(root, user) {
     root.querySelectorAll('.dashboard-nav__item').forEach((item) => item.classList.toggle('is-active', item.dataset.view === currentView));
     root.querySelector('#page-title').textContent = viewMeta[currentView][0];
     root.querySelector('#page-subtitle').textContent = viewMeta[currentView][1];
-    root.querySelector('.tenant-select')?.classList.toggle('is-view-hidden', currentView === 'administration');
+    root.querySelector('.tenant-select')?.classList.toggle('is-view-hidden', currentView !== 'overview');
     if (updateHash && location.hash !== `#${currentView}`) history.replaceState(null, '', `#${currentView}`);
   };
   root.querySelectorAll('[data-view]').forEach((link) => link.addEventListener('click', (event) => {
@@ -463,7 +464,12 @@ async function renderDashboard(root, user) {
   if (user.role === 'SUPERADMIN') {
     root.querySelector('#add-tenant').onclick = () => root.querySelector('#tenant-form [name=name]').focus();
     root.querySelector('#tenant-filter').onchange = async (event) => {
-      selectedTenantId = event.target.value;
+      const selectedTenant = tenants.find((tenant) => tenant.name.toLocaleLowerCase('pt-BR') === event.target.value.trim().toLocaleLowerCase('pt-BR'));
+      if (!selectedTenant) {
+        event.target.value = selectedTenantName();
+        return;
+      }
+      selectedTenantId = selectedTenant.id;
       await loadDashboardData();
     };
     root.querySelector('#tenant-form').onsubmit = async (event) => {
@@ -507,8 +513,8 @@ async function renderDashboard(root, user) {
         tenants = await api('/api/tenants');
         root.querySelector('#tenant-list').innerHTML = tenantListMarkup();
         const tenantFilter = root.querySelector('#tenant-filter');
-        tenantFilter.innerHTML = tenantOptions();
-        tenantFilter.value = String(selectedTenantId);
+        root.querySelector('#tenant-options').innerHTML = tenantOptions();
+        tenantFilter.value = selectedTenantName();
         const updatedTenant = tenants.find((item) => String(item.id) === String(tenant.id));
         if (updatedTenant && String(selectedTenantId) === String(tenant.id)) {
           tenantBranding = { ...tenantBranding, name: updatedTenant.name };
@@ -706,11 +712,14 @@ async function renderDashboard(root, user) {
 
   function applyTenantBranding(branding) {
     const logoData = branding?.logoData || '';
+    const sidebarCompanyName = root.querySelector('#sidebar-company-name');
+    const selectedTenant = tenants.find((tenant) => String(tenant.id) === String(selectedTenantId));
     const reportIdentity = root.querySelector('.report-print-identity');
     const reportCompanyName = root.querySelector('#report-company-name');
     const reportCompanySubtitle = root.querySelector('#report-company-subtitle');
     const reportLogo = root.querySelector('#report-company-logo');
 
+    if (sidebarCompanyName) sidebarCompanyName.textContent = branding?.name || selectedTenant?.name || 'Empresa não selecionada';
     if (reportCompanyName) reportCompanyName.textContent = branding?.name || '';
     if (reportCompanySubtitle) reportCompanySubtitle.textContent = branding?.name || '';
     if (reportIdentity) reportIdentity.hidden = !branding?.name && !logoData;
