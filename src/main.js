@@ -70,6 +70,13 @@ function clearAuthToken() {
 }
 
 function navigatePreviewWindow(previewWindow, previewId, survey) {
+  try {
+    localStorage.setItem(`opina_survey_preview_${previewId}`, JSON.stringify({
+      previewId,
+      survey,
+      expiresAt: Date.now() + 10 * 60 * 1000,
+    }));
+  } catch { /* window.name remains as a fallback when storage is unavailable. */ }
   previewWindow.name = JSON.stringify({ previewId, survey });
   previewWindow.location.replace(`/tablet?preview=${encodeURIComponent(previewId)}`);
   previewWindow.opener = null;

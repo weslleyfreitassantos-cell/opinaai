@@ -238,7 +238,14 @@ export async function renderTablet(root) {
       }
       if (!previewSurvey) {
         const previewKey = `opina_survey_preview_${previewId}`;
-        try { previewSurvey = JSON.parse(localStorage.getItem(previewKey) || 'null'); } catch { /* Ignore expired or invalid previews. */ }
+        try {
+          const storedPreview = JSON.parse(localStorage.getItem(previewKey) || 'null');
+          if (storedPreview?.previewId === previewId
+            && storedPreview.expiresAt > Date.now()
+            && Array.isArray(storedPreview.survey?.questions)) {
+            previewSurvey = storedPreview.survey;
+          }
+        } catch { /* Ignore expired or invalid previews. */ }
         try { localStorage.removeItem(previewKey); } catch { /* Ignore storage restrictions. */ }
       }
     }
