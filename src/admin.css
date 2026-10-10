@@ -84,7 +84,6 @@
 .sidebar-note strong { display: block; color: #f5f9ff; font-size: .82rem; }
 .sidebar-note p { margin: 6px 0 0; color: #8fa9cf; font-size: .73rem; line-height: 1.5; }
 .sidebar-profile { display: flex; align-items: center; gap: 10px; margin-top: auto; padding: 16px 10px 0; border-top: 1px solid rgba(136, 177, 241, .13); }
-.profile-avatar { display: grid; width: 34px; height: 34px; place-items: center; border-radius: 50%; color: #154aa9; background: #c9e9ff; font-size: .8rem; font-weight: 900; }
 .sidebar-profile strong, .sidebar-profile span { display: block; max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sidebar-profile strong { color: #f5f9ff; font-size: .76rem; }
 .sidebar-profile span { margin-top: 3px; color: #8fa9cf; font-size: .68rem; }
