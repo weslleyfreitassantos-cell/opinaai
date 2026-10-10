@@ -383,15 +383,17 @@ export async function renderTablet(root) {
     const headerText = typeof survey.theme?.headerText === 'string' ? survey.theme.headerText : DEFAULT_SURVEY_HEADER;
     const logoData = safeImageDataUrl(survey.branding?.logoData);
     const logoPosition = ALLOWED_LOGO_POSITIONS.has(survey.theme?.logoPosition) ? survey.theme.logoPosition : 'top';
-    const hasSideLogo = logoData && ['left', 'right'].includes(logoPosition);
     const logoMarkup = logoData
       ? `<div class="survey-brand-logo-slot survey-brand-logo-slot--${logoPosition}"><img class="survey-brand-logo" src="${escapeHtml(logoData)}" alt="Logo da pesquisa"></div>`
       : '';
     const previewBadge = previewReadOnly
       ? '<p class="tablet-preview-badge">PRÉ-VISUALIZAÇÃO · AVALIAÇÕES DESATIVADAS</p>'
       : browserTestMode ? '<p class="browser-test-badge">MODO DE TESTE · NENHUMA RESPOSTA É ENVIADA</p>' : '';
+    const headerMarkup = `<header>${headerText ? `<p class="tablet-kicker">${escapeHtml(headerText)}</p>` : ''}${previewBadge}</header>`;
+    const logoBeforeHeader = ['top', 'left'].includes(logoPosition);
+    const brandingMarkup = `<div class="survey-branding-group survey-branding-group--${logoPosition}" data-logo-position="${logoPosition}">${logoBeforeHeader ? logoMarkup + headerMarkup : headerMarkup + logoMarkup}</div>`;
     const submitButton = previewReadOnly || quickSubmit || ratingConfirmation ? '' : '<button class="kiosk-submit" type="submit">Enviar avaliação</button>';
-    root.innerHTML = `<main class="tablet-shell"><section class="survey-kiosk${hasSideLogo ? ' survey-kiosk--logo-side' : ''}${previewReadOnly ? ' survey-kiosk--preview-readonly' : ''}" data-logo-position="${logoPosition}">${logoPosition === 'bottom' ? '' : logoMarkup}<header>${headerText ? `<p class="tablet-kicker">${escapeHtml(headerText)}</p>` : ''}${previewBadge}</header><form id="kiosk-form" data-quick-submit="${quickSubmit}">${questions.map(renderQuestion).join('')}${submitButton}</form>${logoPosition === 'bottom' ? logoMarkup : ''}<footer>Opina AI · Pesquisa de satisfação</footer></section></main>`;
+    root.innerHTML = `<main class="tablet-shell"><section class="survey-kiosk${previewReadOnly ? ' survey-kiosk--preview-readonly' : ''}">${brandingMarkup}<form id="kiosk-form" data-quick-submit="${quickSubmit}">${questions.map(renderQuestion).join('')}${submitButton}</form><footer>Opina AI · Pesquisa de satisfação</footer></section></main>`;
     applySurveyBackground(root.querySelector('.survey-kiosk'), survey.branding);
     const form = root.querySelector('#kiosk-form');
     form.onsubmit = previewReadOnly ? (event) => event.preventDefault() : submitSurvey;
