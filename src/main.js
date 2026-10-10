@@ -347,8 +347,7 @@ async function renderDashboard(root, user) {
   if (user.role === 'SUPERADMIN') tenants = await api('/api/tenants');
   if (!selectedTenantId && tenants.length) selectedTenantId = tenants[0].id;
 
-  const tenantOptions = () => tenants.map((tenant) => `<option value="${escapeHtml(tenant.name)}"></option>`).join('');
-  const selectedTenantName = () => tenants.find((tenant) => String(tenant.id) === String(selectedTenantId))?.name || '';
+  const tenantOptions = () => tenants.map((tenant) => `<option value="${tenant.id}" ${String(tenant.id) === String(selectedTenantId) ? 'selected' : ''}>${escapeHtml(tenant.name)}</option>`).join('');
   const tenantListMarkup = () => tenants.length
     ? tenants.map((tenant) => `<div class="tenant-row"><div><strong>${escapeHtml(tenant.name)}</strong><small>${escapeHtml(tenant.adminEmail || 'Administrador não cadastrado')} · Tablets ativos: ${Number(tenant.activeDevices || 0)} / ${Number(tenant.deviceLimit || 1)}</small></div><button class="outline-button edit-tenant" type="button" data-tenant-id="${tenant.id}">Editar empresa</button></div>`).join('')
     : '<p class="empty-state">Nenhuma empresa cadastrada.</p>';
@@ -375,7 +374,7 @@ async function renderDashboard(root, user) {
         </header>
         <section id="overview" class="dashboard-page-header">
           <div><p class="section-kicker">PAINEL</p><h1 id="page-title">Visão geral</h1><p id="page-subtitle" class="page-subtitle">Acompanhe as avaliações e a operação dos tablets.</p></div>
-          ${user.role === 'SUPERADMIN' ? `<label class="tenant-select"><span>Pesquisar empresa</span><input id="tenant-filter" type="search" list="tenant-options" aria-label="Pesquisar empresa" placeholder="Digite o nome da empresa" autocomplete="off" value="${escapeHtml(selectedTenantName())}"><datalist id="tenant-options">${tenantOptions()}</datalist></label>` : ''}
+          ${user.role === 'SUPERADMIN' ? `<label class="tenant-select"><span>Empresa</span><select id="tenant-filter" aria-label="Empresa">${tenantOptions()}</select></label>` : ''}
         </section>
         <section class="dashboard-section overview-section" data-dashboard-view="overview">
           <div class="section-heading"><div><h2>Resumo</h2></div><span class="section-counter">Período atual</span></div>
@@ -464,12 +463,7 @@ async function renderDashboard(root, user) {
   if (user.role === 'SUPERADMIN') {
     root.querySelector('#add-tenant').onclick = () => root.querySelector('#tenant-form [name=name]').focus();
     root.querySelector('#tenant-filter').onchange = async (event) => {
-      const selectedTenant = tenants.find((tenant) => tenant.name.toLocaleLowerCase('pt-BR') === event.target.value.trim().toLocaleLowerCase('pt-BR'));
-      if (!selectedTenant) {
-        event.target.value = selectedTenantName();
-        return;
-      }
-      selectedTenantId = selectedTenant.id;
+      selectedTenantId = event.target.value;
       await loadDashboardData();
     };
     root.querySelector('#tenant-form').onsubmit = async (event) => {
@@ -513,8 +507,8 @@ async function renderDashboard(root, user) {
         tenants = await api('/api/tenants');
         root.querySelector('#tenant-list').innerHTML = tenantListMarkup();
         const tenantFilter = root.querySelector('#tenant-filter');
-        root.querySelector('#tenant-options').innerHTML = tenantOptions();
-        tenantFilter.value = selectedTenantName();
+        tenantFilter.innerHTML = tenantOptions();
+        tenantFilter.value = String(selectedTenantId);
         const updatedTenant = tenants.find((item) => String(item.id) === String(tenant.id));
         if (updatedTenant && String(selectedTenantId) === String(tenant.id)) {
           tenantBranding = { ...tenantBranding, name: updatedTenant.name };
