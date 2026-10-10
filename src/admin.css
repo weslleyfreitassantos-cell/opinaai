@@ -311,7 +311,7 @@
   .empty-state { padding: 5mm 0; color: #52627a !important; }
 }
 
-.admin-tools { margin-top: 42px; }
+.admin-tools { margin-top: 28px; }
 .admin-tools .dashboard-card { padding: 20px 22px; }
 
 @media (max-width: 1120px) {
@@ -420,21 +420,13 @@
 .metric-card small { font-size: .7rem; }
 .action-card__icon .dashboard-icon { width: 19px; height: 19px; }
 .action-card__intro p { margin-bottom: 17px; }
-.admin-details { border: 1px solid var(--dash-line); border-radius: 16px; background: #fff; box-shadow: 0 8px 22px rgba(26, 61, 108, .035); }
-.admin-details > summary { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px 19px; cursor: pointer; list-style: none; }
-.admin-details > summary::-webkit-details-marker { display: none; }
-.admin-details > summary small, .admin-details > summary strong { display: block; }
-.admin-details > summary small { color: #4284de; font-size: .63rem; font-weight: 900; letter-spacing: .15em; }
-.admin-details > summary strong { margin-top: 5px; color: var(--dash-ink); font-size: .9rem; }
-.admin-details > summary b { color: var(--dash-blue); font-size: .75rem; }
-.admin-details > summary b span { font-size: 1rem; }
-.admin-details[open] > summary { border-bottom: 1px solid var(--dash-line); }
-.admin-details .dashboard-card { display: flex; flex-direction: column; padding: 19px; border: 0; border-radius: 0; box-shadow: none; }
-.admin-details .tenant-list-heading, .admin-details .tenant-list { order: -1; }
-.admin-details .tenant-list-heading { margin-top: 0; padding-top: 0; border-top: 0; }
-.admin-details .tenant-list { margin-bottom: 20px; }
-.admin-details #tenant-form { padding-top: 18px; border-top: 1px solid var(--dash-line); }
-.admin-tools { margin-top: 28px; }
+.admin-management { padding: 20px 22px; }
+.admin-management .tenant-list-heading { margin-top: 0; padding-top: 0; border-top: 0; }
+.admin-management .tenant-list { margin-bottom: 0; }
+.admin-management #tenant-form { margin-top: 20px; padding-top: 18px; border-top: 1px solid var(--dash-line); }
+.admin-add-company { display: inline-flex; align-items: center; gap: 8px; padding: 0; border: 0; color: var(--dash-blue); background: transparent; font: inherit; font-size: .78rem; font-weight: 800; white-space: nowrap; }
+.admin-add-company:hover { color: #0759c8; }
+.admin-add-company span { font-size: 1rem; }
 .device-row { align-items: flex-start; gap: 24px; padding: 18px 0; }
 .device-location { margin: 6px 0 0; }
 .device-details { margin-top: 9px; color: var(--dash-muted); font-size: .69rem; }

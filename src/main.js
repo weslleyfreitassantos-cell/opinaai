@@ -107,6 +107,7 @@ function dashboardIcon(name) {
     tablet: '<rect x="6" y="2.5" width="12" height="19" rx="2"/><path d="M10 5h4M11 18.5h2"/>',
     survey: '<path d="M5 3.5h14a1 1 0 0 1 1 1v15a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-15a1 1 0 0 1 1-1Z"/><path d="M8 8h8M8 12h8M8 16h5"/>',
     chart: '<path d="M4 19V5M4 19h16"/><path d="M8 16v-5M12 16V7M16 16v-8"/>',
+    building: '<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M9 7h.01M15 7h.01M9 11h.01M15 11h.01M9 15h.01M15 15h.01M10 21v-3h4v3"/>',
     printer: '<path d="M6 9V3h12v6M6 17H4a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2h-2"/><path d="M6 14h12v7H6z"/><path d="M18 12h.01"/>',
     evaluations: '<rect x="5" y="4.5" width="14" height="17" rx="2.5"/><path d="M9 4.5v-1h6v1M8.5 10h2M13 10h2.5M8.5 14h2M13 14h2.5M8.5 18h7"/>',
     satisfaction: '<circle cx="12" cy="12" r="9"/><path d="M9 10h.01M15 10h.01M8.5 14.5c.9 1.3 2.1 2 3.5 2s2.6-.7 3.5-2"/>',
@@ -355,6 +356,7 @@ async function renderDashboard(root, user) {
           <a class="dashboard-nav__item" data-view="tablets" href="#tablets"><span aria-hidden="true">${dashboardIcon('tablet')}</span> Tablets</a>
           <a class="dashboard-nav__item" data-view="surveys" href="#surveys"><span aria-hidden="true">${dashboardIcon('survey')}</span> Pesquisas</a>
           <a class="dashboard-nav__item" data-view="reports" href="#reports"><span aria-hidden="true">${dashboardIcon('chart')}</span> Relatórios</a>
+          ${user.role === 'SUPERADMIN' ? `<a class="dashboard-nav__item" data-view="administration" href="#administration"><span aria-hidden="true">${dashboardIcon('building')}</span> Administração</a>` : ''}
         </nav>
         <div class="sidebar-profile"><span class="profile-avatar">${escapeHtml(String(user.name || 'A').slice(0, 1).toUpperCase())}</span><div><strong>${escapeHtml(user.name)}</strong><span>${user.role === 'SUPERADMIN' ? 'Superadministrador' : 'Administrador'}</span></div></div>
       </aside>
@@ -371,7 +373,7 @@ async function renderDashboard(root, user) {
           <div class="section-heading"><div><h2>Resumo</h2></div><span class="section-counter">Período atual</span></div>
           <div id="report-metrics" class="metric-grid overview-metrics"></div>
         </section>
-        ${user.role === 'SUPERADMIN' ? `<section id="companies" class="dashboard-section admin-tools" data-dashboard-view="overview"><details class="admin-details"><summary><span><small>ADMINISTRAÇÃO</small><strong>Gerenciar empresas</strong></span><b>Adicionar empresa <span aria-hidden="true">＋</span></b></summary><article class="dashboard-card"><form id="tenant-form" class="form-grid form-grid--tenant"><label>Nome da empresa<input name="name" required></label><label>E-mail do administrador<input name="email" type="email" required></label><label>Senha inicial<input name="password" type="password" minlength="8" required></label><label>Limite de tablets<input name="deviceLimit" type="number" min="1" max="10000" step="1" value="1" required></label><div class="form-submit-row"><button class="submit-button compact" type="submit">Criar empresa <span aria-hidden="true">→</span></button><p class="inline-message" id="tenant-message" role="status"></p></div></form><div class="tenant-list-heading"><strong>Empresas cadastradas</strong></div><div id="tenant-list" class="tenant-list">${tenantListMarkup()}</div></article></details></section>` : ''}
+        ${user.role === 'SUPERADMIN' ? `<section id="administration" class="dashboard-section admin-tools" data-dashboard-view="administration"><div class="section-heading"><div><p class="section-kicker">ADMINISTRAÇÃO</p><h2>Gerenciar empresas</h2></div><button id="add-tenant" class="admin-add-company" type="button">Adicionar empresa <span aria-hidden="true">＋</span></button></div><article class="dashboard-card admin-management"><div class="tenant-list-heading"><strong>Empresas cadastradas</strong></div><div id="tenant-list" class="tenant-list">${tenantListMarkup()}</div><form id="tenant-form" class="form-grid form-grid--tenant"><label>Nome da empresa<input name="name" required></label><label>E-mail do administrador<input name="email" type="email" required></label><label>Senha inicial<input name="password" type="password" minlength="8" required></label><label>Limite de tablets<input name="deviceLimit" type="number" min="1" max="10000" step="1" value="1" required></label><div class="form-submit-row"><button class="submit-button compact" type="submit">Criar empresa <span aria-hidden="true">→</span></button><p class="inline-message" id="tenant-message" role="status"></p></div></form></article></section>` : ''}
         <section id="tablets" class="dashboard-section" data-dashboard-view="tablets">
           <div class="section-heading"><div><p class="section-kicker">OPERAÇÃO</p><h2>Tablets</h2></div><span id="device-count" class="section-counter">Carregando...</span></div>
           <article class="dashboard-card action-card action-card--pair"><div class="action-card__icon" aria-hidden="true">${dashboardIcon('tablet')}</div><div class="action-card__intro"><h3>Parear tablet</h3><p>Conecte um dispositivo à operação.</p></div><form id="pair-form" class="form-stack"><label>Código exibido no tablet<input name="activationCode" inputmode="numeric" maxlength="6" pattern="[0-9]{6}" required placeholder="Ex.: 482913"></label><div class="form-grid"><label>Nome do tablet<input name="deviceName" placeholder="Tablet Recepção"></label><label>Unidade / local<input name="locationName" value="Recepção" required></label></div><div class="form-submit-row"><button class="submit-button compact" type="submit">Parear dispositivo <span aria-hidden="true">→</span></button><p class="inline-message" id="pair-message" role="status"></p></div></form></article>
@@ -404,6 +406,7 @@ async function renderDashboard(root, user) {
     tablets: ['Tablets', 'Pareie dispositivos e acompanhe suas pesquisas.'],
     surveys: ['Pesquisas', 'Crie e gerencie as perguntas exibidas nos tablets.'],
     reports: ['Relatórios', 'Leia os resultados da experiência dos clientes.'],
+    ...(user.role === 'SUPERADMIN' ? { administration: ['Administração', 'Gerencie empresas, administradores e limites de tablets.'] } : {}),
   };
   const showDashboardView = (view, updateHash = true) => {
     const currentView = viewMeta[view] ? view : 'overview';
@@ -411,6 +414,7 @@ async function renderDashboard(root, user) {
     root.querySelectorAll('.dashboard-nav__item').forEach((item) => item.classList.toggle('is-active', item.dataset.view === currentView));
     root.querySelector('#page-title').textContent = viewMeta[currentView][0];
     root.querySelector('#page-subtitle').textContent = viewMeta[currentView][1];
+    root.querySelector('.tenant-select')?.classList.toggle('is-view-hidden', currentView === 'administration');
     if (updateHash && location.hash !== `#${currentView}`) history.replaceState(null, '', `#${currentView}`);
   };
   root.querySelectorAll('[data-view]').forEach((link) => link.addEventListener('click', (event) => {
@@ -450,6 +454,7 @@ async function renderDashboard(root, user) {
   };
 
   if (user.role === 'SUPERADMIN') {
+    root.querySelector('#add-tenant').onclick = () => root.querySelector('#tenant-form [name=name]').focus();
     root.querySelector('#tenant-filter').onchange = async (event) => {
       selectedTenantId = event.target.value;
       await loadDashboardData();
