@@ -907,6 +907,13 @@ async function renderDashboard(root, user) {
       if (selectedReportFilters[id]) select.value = selectedReportFilters[id];
     }
     const formatReportDate = (value) => value ? value.split('-').reverse().join('/') : '';
+    const formatReportDay = (value) => {
+      const rawDay = String(value || '');
+      const dateOnly = rawDay.match(/^(\d{4})-(\d{2})-(\d{2})/);
+      if (dateOnly) return `${dateOnly[3]}/${dateOnly[2]}/${dateOnly[1]}`;
+      const parsedDay = new Date(rawDay);
+      return Number.isNaN(parsedDay.getTime()) ? rawDay : new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Sao_Paulo' }).format(parsedDay);
+    };
     const fromDate = root.querySelector('#from').value;
     const toDate = root.querySelector('#to').value;
     const periodLabel = fromDate && toDate
@@ -915,7 +922,13 @@ async function renderDashboard(root, user) {
         : toDate ? `Até ${formatReportDate(toDate)}` : 'Todo o período';
     const report = reports?.metrics ? reports : { metrics: { total: 0, averageScore: null, satisfiedRate: 0, neutralRate: 0, dissatisfiedRate: 0 }, distribution: [], rows: [] };
     const metrics = report.metrics;
+    const issuedAt = new Intl.DateTimeFormat('pt-BR', {
+      day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
+    })
+      .format(new Date())
+      .replace(', ', ' às ');
     const printContext = [
+      ['Emitido em', issuedAt],
       ['Período', periodLabel],
       ['Pesquisa', root.querySelector('#report-survey').selectedOptions[0]?.textContent.trim() || 'Todas'],
       ['Unidade', root.querySelector('#report-location').selectedOptions[0]?.textContent.trim() || 'Todas'],
@@ -932,13 +945,13 @@ async function renderDashboard(root, user) {
       line.append(labelElement, valueElement);
       return line;
     }));
-    root.querySelector('#report-total').textContent = `${metrics.total} avaliação(ões)`;
+    root.querySelector('#report-total').textContent = `Total de avaliações: ${metrics.total}`;
     root.querySelector('#report-metrics').innerHTML = `<div class="metric-card metric-card--blue"><div class="metric-card__top"><span class="metric-card__icon" aria-hidden="true">${dashboardIcon('evaluations')}</span><span>Avaliações</span></div><strong>${metrics.total}</strong><small>No período</small></div><div class="metric-card metric-card--green"><div class="metric-card__top"><span class="metric-card__icon" aria-hidden="true">${dashboardIcon('satisfaction')}</span><span>Satisfação</span></div><strong>${Number(metrics.satisfiedRate || 0).toLocaleString('pt-BR')}%</strong><small>Clientes satisfeitos</small></div><div class="metric-card metric-card--purple"><div class="metric-card__top"><span class="metric-card__icon" aria-hidden="true">${dashboardIcon('rating')}</span><span>Nota média</span></div><strong>${metrics.averageScore === null ? '—' : Number(metrics.averageScore).toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}</strong><small>De 1 a 5</small></div><div class="metric-card metric-card--orange"><div class="metric-card__top"><span class="metric-card__icon" aria-hidden="true">${dashboardIcon('dissatisfaction')}</span><span>Insatisfação</span></div><strong>${Number(metrics.dissatisfiedRate || 0).toLocaleString('pt-BR')}%</strong><small>Clientes insatisfeitos</small></div>`;
     root.querySelector('#report-distribution').innerHTML = report.distribution?.length
       ? report.distribution.map((item) => `<div class="distribution-row"><span class="distribution-label"><span class="distribution-emoji" aria-hidden="true">${escapeHtml(item.emoji)}</span><span>${escapeHtml(item.label)}</span></span><span class="distribution-bar"><i style="width:${metrics.total ? Math.min(100, (item.count / metrics.total) * 100) : 0}%"></i></span><strong>${item.count}</strong></div>`).join('')
       : '<p class="empty-state">Sem distribuição no período.</p>';
     root.querySelector('#report-list').innerHTML = report.rows?.length
-      ? report.rows.slice(0, 30).map((row) => `<div class="report-row"><span class="report-row__dot" aria-hidden="true"></span><div><strong>${escapeHtml(row.survey_title)}</strong><small>${escapeHtml(row.location_name || row.device_name || 'Tablet')} · ${escapeHtml(row.day)}</small></div><b>${row.total}</b></div>`).join('')
+      ? report.rows.slice(0, 30).map((row) => `<div class="report-row"><span class="report-row__dot" aria-hidden="true"></span><div><strong>${escapeHtml(row.survey_title)}</strong><small>${escapeHtml(row.location_name || row.device_name || 'Tablet')} · ${escapeHtml(formatReportDay(row.day))}</small></div><b>${row.total}</b></div>`).join('')
       : '<p class="empty-state">Sem respostas no período.</p>';
 
     root.querySelectorAll('.clear-survey').forEach((button) => {
