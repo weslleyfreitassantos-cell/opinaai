@@ -258,7 +258,7 @@ function renderLogin(root) {
           <p class="eyebrow">PESQUISA DE SATISFAÇÃO DIGITAL</p>
           <h1>Pesquisas de<br><span>satisfação</span></h1>
           <p class="intro">Colete opiniões no tablet e acompanhe a experiência em tempo real.</p>
-          <img class="feedback-visual" src="/assets/opinaai-satisfaction-illustration.png" alt="Cartão Opina AI com rostos que representam níveis de satisfação">
+          <img class="feedback-visual" src="/assets/login-hero.webp" alt="Cartão Opina AI com rostos que representam níveis de satisfação">
           <p class="tagline">Tablet, pesquisa e resultado. Sem distrações.</p>
         </div>
       </div>
