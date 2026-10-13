@@ -1304,12 +1304,15 @@ app.post('/api/devices/heartbeat', deviceAuth, asyncRoute(async (req, res) => {
 app.get('/api/devices/config', deviceAuth, asyncRoute(async (req, res) => {
   await pool.query("UPDATE devices SET status='online',last_seen_at=now(),updated_at=now() WHERE id=$1 AND active=true", [req.device.id]);
   const currentConfigVersion = asPositiveInt(req.query.currentConfigVersion);
-  if (currentConfigVersion && currentConfigVersion === req.device.config_version) {
-    return res.json({ status: 'unchanged', deviceId: req.device.device_id, configVersion: req.device.config_version });
-  }
+  // O estado de pareamento tem prioridade sobre a versão de configuração.
+  // Caso contrário, um tablet que guarda uma versão antiga poderia receber
+  // `unchanged` e nunca exibir o novo código de pareamento.
   if (!req.device.tenant_id) return res.json({ status: 'unpaired', deviceId: req.device.device_id, configVersion: req.device.config_version, survey: null });
   if (!req.device.active_survey_id) {
     return res.json({ status: 'paired', deviceId: req.device.device_id, deviceName: req.device.name, configVersion: req.device.config_version, survey: null });
+  }
+  if (currentConfigVersion && currentConfigVersion === req.device.config_version) {
+    return res.json({ status: 'unchanged', deviceId: req.device.device_id, configVersion: req.device.config_version });
   }
 
   const survey = await pool.query(

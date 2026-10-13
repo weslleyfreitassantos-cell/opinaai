@@ -147,6 +147,11 @@ function cachedSurvey() {
 }
 
 function currentConfigVersion() {
+  // A versão só pode ser reutilizada quando a pesquisa correspondente
+  // também está disponível localmente. Sem o cache, pedir `unchanged`
+  // deixaria o tablet preso na tela de preparação.
+  const cached = cachedSurvey();
+  if (!cached?.id || !Array.isArray(cached.questions)) return 0;
   return Number(localStorage.getItem(KEYS.configVersion) || 0) || 0;
 }
 
