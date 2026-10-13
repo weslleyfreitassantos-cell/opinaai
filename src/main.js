@@ -374,7 +374,7 @@ async function renderDashboard(root, user) {
   if (user.role === 'SUPERADMIN') tenants = await api('/api/tenants');
   if (!selectedTenantId && tenants.length) selectedTenantId = tenants[0].id;
 
-  const tenantOptions = () => tenants.map((tenant) => `<option value="${escapeHtml(tenant.id)}">${escapeHtml(tenant.name)}</option>`).join('');
+  const tenantOptions = () => tenants.map((tenant) => `<option value="${escapeHtml(tenant.name)}"></option>`).join('');
   const selectedTenantName = () => tenants.find((tenant) => String(tenant.id) === String(selectedTenantId))?.name || '';
   const tenantListMarkup = () => tenants.length
     ? tenants.map((tenant) => `<div class="tenant-row"><div><strong>${escapeHtml(tenant.name)}</strong><small>${escapeHtml(tenant.adminEmail || 'Administrador não cadastrado')} · Tablets ativos: ${Number(tenant.activeDevices || 0)} / ${Number(tenant.deviceLimit || 1)}</small></div><button class="outline-button edit-tenant" type="button" data-tenant-id="${tenant.id}">Editar empresa</button></div>`).join('')
@@ -388,7 +388,7 @@ async function renderDashboard(root, user) {
         <nav class="dashboard-nav" aria-label="Navegação do painel">
           <a class="dashboard-nav__item is-active" data-view="overview" href="#overview"><span aria-hidden="true">${dashboardIcon('home')}</span> Visão geral</a>
           <a class="dashboard-nav__item" data-view="tablets" href="#tablets"><span aria-hidden="true">${dashboardIcon('tablet')}</span> Tablets</a>
-          ${user.role === 'SUPERADMIN' ? `<a class="dashboard-nav__item" data-view="administration" href="#administration"><span aria-hidden="true">${dashboardIcon('building')}</span> Empresas</a>` : ''}
+          ${user.role === 'SUPERADMIN' ? `<a class="dashboard-nav__item" data-view="administration" href="#administration"><span aria-hidden="true">${dashboardIcon('building')}</span> Administração</a>` : ''}
           <a class="dashboard-nav__item" data-view="surveys" href="#surveys"><span aria-hidden="true">${dashboardIcon('survey')}</span> Pesquisas</a>
           <a class="dashboard-nav__item" data-view="reports" href="#reports"><span aria-hidden="true">${dashboardIcon('chart')}</span> Relatórios</a>
         </nav>
@@ -401,13 +401,13 @@ async function renderDashboard(root, user) {
         </header>
         <section id="overview" class="dashboard-page-header">
           <div><h1 id="page-title">Visão geral</h1><p id="page-subtitle" class="page-subtitle">Acompanhe as avaliações e a operação dos tablets.</p></div>
-          ${user.role === 'SUPERADMIN' ? `<label class="tenant-select"><span>Empresa selecionada</span><select id="tenant-filter" aria-label="Selecionar empresa"><option value="">Selecione uma empresa</option>${tenantOptions()}</select></label>` : ''}
+          ${user.role === 'SUPERADMIN' ? `<label class="tenant-select"><span>Empresa</span><input id="tenant-filter" type="search" list="tenant-options" aria-label="Pesquisar empresa" placeholder="Digite para buscar empresa" autocomplete="off" value="${escapeHtml(selectedTenantName())}"><datalist id="tenant-options">${tenantOptions()}</datalist></label>` : ''}
         </section>
         <section class="dashboard-section overview-section" data-dashboard-view="overview">
           <div class="section-heading"><div><h2>Resumo</h2></div><span class="section-counter">Período atual</span></div>
           <div id="report-metrics" class="metric-grid overview-metrics"></div>
         </section>
-        ${user.role === 'SUPERADMIN' ? `<section id="administration" class="dashboard-section admin-tools" data-dashboard-view="administration"><div class="section-heading"><div><p class="section-kicker">EMPRESAS</p><h2>Selecionar empresa</h2><p class="page-subtitle">Escolha uma empresa para consultar tablets, pesquisas e emitir relatórios.</p></div><button id="add-tenant" class="admin-add-company" type="button">Adicionar empresa <span aria-hidden="true">＋</span></button></div><article class="dashboard-card admin-management"><div class="tenant-list-heading"><strong>Empresas cadastradas</strong></div><div id="tenant-list" class="tenant-list">${tenantListMarkup()}</div><form id="tenant-form" class="form-grid form-grid--tenant"><label>Nome da empresa<input name="name" required></label><label>E-mail do administrador<input name="email" type="email" required></label><label>Senha inicial<input name="password" type="password" minlength="8" required></label><label>Limite de tablets<input name="deviceLimit" type="number" min="1" max="10000" step="1" value="1" required></label><div class="form-submit-row"><button class="submit-button compact" type="submit">Criar empresa <span aria-hidden="true">→</span></button><p class="inline-message" id="tenant-message" role="status"></p></div></form></article></section>` : ''}
+        ${user.role === 'SUPERADMIN' ? `<section id="administration" class="dashboard-section admin-tools" data-dashboard-view="administration"><div class="section-heading"><div><p class="section-kicker">ADMINISTRAÇÃO</p><h2>Gerenciar empresas</h2></div><button id="add-tenant" class="admin-add-company" type="button">Adicionar empresa <span aria-hidden="true">＋</span></button></div><article class="dashboard-card admin-management"><div class="tenant-list-heading"><strong>Empresas cadastradas</strong></div><div id="tenant-list" class="tenant-list">${tenantListMarkup()}</div><form id="tenant-form" class="form-grid form-grid--tenant"><label>Nome da empresa<input name="name" required></label><label>E-mail do administrador<input name="email" type="email" required></label><label>Senha inicial<input name="password" type="password" minlength="8" required></label><label>Limite de tablets<input name="deviceLimit" type="number" min="1" max="10000" step="1" value="1" required></label><div class="form-submit-row"><button class="submit-button compact" type="submit">Criar empresa <span aria-hidden="true">→</span></button><p class="inline-message" id="tenant-message" role="status"></p></div></form></article></section>` : ''}
         <section id="tablets" class="dashboard-section" data-dashboard-view="tablets">
           <div class="section-heading"><div><p class="section-kicker">OPERAÇÃO</p><h2>Tablets</h2></div><span id="device-count" class="section-counter">Carregando...</span></div>
           <article class="dashboard-card action-card action-card--pair"><div class="action-card__icon" aria-hidden="true">${dashboardIcon('tablet')}</div><div class="action-card__intro"><h3>Parear tablet</h3><p>Conecte um dispositivo à operação.</p></div><form id="pair-form" class="form-stack"><label>Código exibido no tablet<input name="activationCode" inputmode="numeric" maxlength="6" pattern="[0-9]{6}" required placeholder="Ex.: 482913"></label><div class="form-grid"><label>Nome do tablet<input name="deviceName" placeholder="Tablet Recepção"></label><label>Unidade / local<input name="locationName" value="Recepção" required></label></div><div class="form-submit-row"><button class="submit-button compact" type="submit">Parear dispositivo <span aria-hidden="true">→</span></button><p class="inline-message" id="pair-message" role="status"></p></div></form></article>
@@ -489,11 +489,11 @@ async function renderDashboard(root, user) {
 
   if (user.role === 'SUPERADMIN') {
     root.querySelector('#add-tenant').onclick = () => root.querySelector('#tenant-form [name=name]').focus();
-    root.querySelector('#tenant-filter').value = String(selectedTenantId || '');
+    root.querySelector('#tenant-filter').value = selectedTenantName();
     root.querySelector('#tenant-filter').onchange = async (event) => {
-      const selectedTenant = tenants.find((tenant) => String(tenant.id) === String(event.target.value));
+      const selectedTenant = tenants.find((tenant) => tenant.name.toLocaleLowerCase('pt-BR') === event.target.value.trim().toLocaleLowerCase('pt-BR'));
       if (!selectedTenant) {
-        event.target.value = String(selectedTenantId || '');
+        event.target.value = selectedTenantName();
         return;
       }
       selectedTenantId = selectedTenant.id;
@@ -881,8 +881,8 @@ async function renderDashboard(root, user) {
       root.querySelector('#tenant-list').innerHTML = tenantListMarkup();
       const tenantFilter = root.querySelector('#tenant-filter');
       if (tenantFilter) {
-        tenantFilter.innerHTML = `<option value="">Selecione uma empresa</option>${tenantOptions()}`;
-        tenantFilter.value = String(selectedTenantId || '');
+        root.querySelector('#tenant-options').innerHTML = tenantOptions();
+        tenantFilter.value = selectedTenantName();
       }
     }
     const suffix = selectedTenantId ? `?tenantId=${encodeURIComponent(selectedTenantId)}` : '';
