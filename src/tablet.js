@@ -371,7 +371,7 @@ export async function renderTablet(root) {
   }
 
   function renderAdminUnlocked() {
-    root.innerHTML = '<main class="tablet-shell"><section class="tablet-card kiosk-unlocked-card"><p class="tablet-kicker">ACESSO ADMINISTRATIVO</p><h1>Tablet liberado</h1><p class="tablet-copy">O modo quiosque foi desativado temporariamente. Faça os ajustes necessários e bloqueie novamente antes de devolver o tablet ao atendimento.</p><button class="kiosk-reenter-button" type="button">Voltar ao modo quiosque</button></section></main>';
+    root.innerHTML = '<main class="tablet-shell"><section class="tablet-card kiosk-unlocked-card"><p class="tablet-kicker">ACESSO ADMINISTRATIVO</p><h1>Tablet liberado</h1><p class="tablet-copy">O modo quiosque foi desativado temporariamente. Faça os ajustes necessários e bloqueie novamente antes de devolver o tablet ao atendimento.</p><div class="kiosk-unlocked-card__actions"><button class="kiosk-reenter-button" type="button">Voltar ao modo quiosque</button><button class="kiosk-unpair-button" type="button">Desparear este tablet</button></div><p class="kiosk-unlocked-card__status" role="status" aria-live="polite"></p></section></main>';
     root.querySelector('.kiosk-reenter-button').onclick = async () => {
       try { await nativeRuntimePlugin()?.reenterKiosk?.(); } finally {
         kioskUnlocked = false;
@@ -379,6 +379,35 @@ export async function renderTablet(root) {
         else await refreshConfig();
       }
     };
+    root.querySelector('.kiosk-unpair-button').onclick = unpairTablet;
+  }
+
+  async function unpairTablet() {
+    if (!window.confirm('Desparear este tablet? Ele perderá a empresa e a pesquisa atuais e exibirá um novo código de pareamento.')) return;
+    const button = root.querySelector('.kiosk-unpair-button');
+    const status = root.querySelector('.kiosk-unlocked-card__status');
+    if (!button || !status) return;
+    button.disabled = true;
+    status.textContent = 'Despareando este tablet...';
+    try {
+      await deviceRequest('/api/devices/self/unpair', id, {
+        method: 'POST',
+        body: JSON.stringify({ deviceId: id.deviceId }),
+      });
+      activeSurvey = null;
+      waitingForPairing = true;
+      localStorage.removeItem(KEYS.surveyCache);
+      localStorage.removeItem(KEYS.configVersion);
+      localStorage.removeItem(KEYS.activation);
+      try { await nativeRuntimePlugin()?.reenterKiosk?.(); } catch { /* The pairing screen remains available if kiosk lock fails. */ }
+      kioskUnlocked = false;
+      ensureActivation(id);
+      await register();
+      renderPairing();
+    } catch (error) {
+      status.textContent = error?.message || 'Não foi possível desparear o tablet. Tente novamente.';
+      button.disabled = false;
+    }
   }
 
   async function register() {

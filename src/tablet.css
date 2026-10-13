@@ -122,6 +122,10 @@ body { display:block; min-height:100vh; margin:0; background:#eef5ff; }
 .kiosk-exit-dialog__actions button, .kiosk-reenter-button { min-height:52px; padding:0 20px; border:0; border-radius:14px; font:inherit; font-weight:800; cursor:pointer; }
 .kiosk-exit-dialog__cancel { background:#edf3fb; color:#19345c; }
 .kiosk-exit-dialog__submit, .kiosk-reenter-button { background:#176ee8; color:#fff; box-shadow:0 10px 24px rgba(23,110,232,.2); }
+.kiosk-unlocked-card__actions { display:flex; flex-wrap:wrap; justify-content:center; gap:12px; }
+.kiosk-unpair-button { min-height:52px; padding:0 20px; border:1px solid #e0a5a5; border-radius:14px; background:#fff6f6; color:#a32929; font:inherit; font-weight:800; cursor:pointer; }
+.kiosk-unpair-button:disabled { cursor:wait; opacity:.65; }
+.kiosk-unlocked-card__status { min-height:22px; margin:0; color:#667791; font-size:15px; }
 .kiosk-unlocked-card { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:18px; text-align:center; }
 .kiosk-unlocked-card .tablet-copy { max-width:620px; }
 .thanks-icon { display:grid; width:120px; height:120px; margin-bottom:38px; place-items:center; border-radius:50%; background:#e6f8ef; color:#12965d; font-size:70px; font-weight:900; }

@@ -1334,6 +1334,18 @@ app.get('/api/devices/config', deviceAuth, asyncRoute(async (req, res) => {
   });
 }));
 
+app.post('/api/devices/self/unpair', deviceAuth, asyncRoute(async (req, res) => {
+  if (cleanText(req.body?.deviceId, 80) !== req.device.device_id) return res.status(400).json({ error: 'invalid_device' });
+  await pool.query(
+    `UPDATE devices
+        SET tenant_id=NULL,location_id=NULL,active_survey_id=NULL,activation_code=NULL,
+            activation_expires_at=NULL,paired_at=NULL,status='unknown',config_version=config_version+1,updated_at=now()
+      WHERE id=$1 AND active=true`,
+    [req.device.id],
+  );
+  res.json({ ok: true });
+}));
+
 app.post('/api/devices/responses', deviceAuth, async (req, res) => {
   const surveyId = asPositiveInt(req.body?.surveyId);
   const submissionId = cleanText(req.body?.submissionId, 80);
