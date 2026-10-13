@@ -128,6 +128,12 @@ body { display:block; min-height:100vh; margin:0; background:#eef5ff; }
 .kiosk-unlocked-card__status { min-height:22px; margin:0; color:#667791; font-size:15px; }
 .kiosk-unlocked-card { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:18px; text-align:center; }
 .kiosk-unlocked-card .tablet-copy { max-width:620px; }
+.kiosk-pin-setup-card { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:18px; text-align:center; }
+.kiosk-pin-setup-card .tablet-copy { max-width:620px; }
+.kiosk-pin-setup-form { display:grid; width:min(420px,100%); gap:16px; text-align:left; }
+.kiosk-pin-setup-form label { display:grid; gap:8px; color:#19345c; font-weight:800; }
+.kiosk-pin-setup-form input { min-height:58px; padding:0 16px; border:1px solid #cbd9eb; border-radius:14px; color:#082858; font-size:24px; letter-spacing:.3em; text-align:center; }
+.kiosk-pin-setup-form button { min-height:58px; margin-top:8px; border:0; border-radius:14px; font:inherit; font-weight:800; cursor:pointer; }
 .thanks-icon { display:grid; width:120px; height:120px; margin-bottom:38px; place-items:center; border-radius:50%; background:#e6f8ef; color:#12965d; font-size:70px; font-weight:900; }
 .thanks-card .survey-brand-logo-slot { margin:0 auto 24px; }
 .thanks-card .survey-brand-logo-slot--bottom { margin:24px auto 0; }
