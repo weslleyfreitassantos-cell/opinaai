@@ -86,7 +86,7 @@ function storeSurveyPreview(survey) {
     surveyPreviews.delete(surveyPreviews.keys().next().value);
   }
   const token = randomBytes(32).toString('base64url');
-  surveyPreviews.set(token, { survey, expiresAt: now + SURVEY_PREVIEW_TTL_MS });
+  surveyPreviews.set(token, { surveyId: survey.id, expiresAt: now + SURVEY_PREVIEW_TTL_MS });
   return token;
 }
 
@@ -107,6 +107,22 @@ function normalizeSurveyHeaderText(value) {
 
 function normalizeSurveyLogoPosition(value) {
   return ['top', 'left', 'right', 'bottom'].includes(value) ? value : null;
+}
+
+function normalizeSurveyFontFamily(value) {
+  const allowed = new Set([
+    'Arial, sans-serif', 'Verdana, sans-serif', 'Tahoma, sans-serif', 'Trebuchet MS, sans-serif',
+    'Georgia, serif', 'Times New Roman, serif', 'Courier New, monospace', 'Lucida Sans, sans-serif',
+    'Impact, sans-serif', 'Comic Sans MS, cursive', 'Garamond, serif', 'Calibri, sans-serif',
+  ]);
+  return allowed.has(value) ? value : null;
+}
+function normalizeSurveyColor(value, fallback = '#1269ea') {
+  return typeof value === 'string' && /^#[0-9a-f]{6}$/i.test(value) ? value : fallback;
+}
+function normalizeSurveyFontSize(value, fallback) {
+  const size = Number(value);
+  return Number.isFinite(size) && size >= 12 && size <= 100 ? Math.round(size) : fallback;
 }
 
 function sha256(value) {
@@ -707,28 +723,33 @@ app.get('/api/surveys/:id', auth, asyncRoute(async (req, res) => {
 
 app.post('/api/surveys/:id/preview', auth, surveyPreviewLimiter, asyncRoute(async (req, res) => {
   const surveyId = asPositiveInt(req.params.id);
-  const result = await pool.query('SELECT id,tenant_id,title,description,theme FROM surveys WHERE id=$1', [surveyId]);
+  const result = await pool.query('SELECT id,tenant_id,title,description,theme,preview_token FROM surveys WHERE id=$1', [surveyId]);
   if (!result.rowCount) return res.status(404).json({ error: 'Pesquisa não encontrada.' });
   if (!canAccessTenant(req, result.rows[0].tenant_id)) return res.sendStatus(403);
+  let token = result.rows[0].preview_token;
+  if (!token) {
+    token = randomBytes(32).toString('base64url');
+    await pool.query('UPDATE surveys SET preview_token=$1 WHERE id=$2 AND preview_token IS NULL', [token, surveyId]);
+    const current = await pool.query('SELECT preview_token FROM surveys WHERE id=$1', [surveyId]);
+    token = current.rows[0].preview_token;
+  }
+  res.set('Cache-Control', 'no-store').status(201).json({ token });
+}));
+
+app.get('/api/survey-previews', surveyPreviewLimiter, asyncRoute(async (req, res) => {
+  const token = String(req.get('x-survey-preview-token') || '');
+  if (!/^[A-Za-z0-9_-]{43}$/.test(token)) return res.status(404).json({ error: 'Prévia indisponível.' });
+  const result = await pool.query('SELECT id,tenant_id,title,description,theme FROM surveys WHERE preview_token=$1', [token]);
+  if (!result.rowCount) {
+    return res.status(404).json({ error: 'Prévia indisponível.' });
+  }
+  const surveyId = result.rows[0].id;
   const [questions, branding] = await Promise.all([
     pool.query('SELECT id,text,type,position,options FROM questions WHERE survey_id=$1 ORDER BY position,id', [surveyId]),
     loadSurveyBranding(surveyId),
   ]);
-  const survey = { ...result.rows[0], questions: questions.rows, ...branding };
-  const token = storeSurveyPreview(survey);
-  res.set('Cache-Control', 'no-store').status(201).json({ token });
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate').json({ survey: { ...result.rows[0], questions: questions.rows, ...branding } });
 }));
-
-app.get('/api/survey-previews', surveyPreviewLimiter, (req, res) => {
-  const token = String(req.get('x-survey-preview-token') || '');
-  if (!/^[A-Za-z0-9_-]{43}$/.test(token)) return res.status(404).json({ error: 'Prévia indisponível.' });
-  const preview = surveyPreviews.get(token);
-  if (!preview || preview.expiresAt <= Date.now()) {
-    surveyPreviews.delete(token);
-    return res.status(404).json({ error: 'Prévia expirada. Abra novamente pelo painel.' });
-  }
-  res.set('Cache-Control', 'no-store').json({ survey: preview.survey });
-});
 
 app.post('/api/surveys', auth, async (req, res) => {
   if (!requireManager(req, res)) return;
@@ -833,14 +854,30 @@ app.patch('/api/surveys/:id', auth, asyncRoute(async (req, res) => {
   const headerText = hasHeaderText ? normalizeSurveyHeaderText(req.body.headerText) : null;
   const hasLogoPosition = req.body?.logoPosition !== undefined;
   const logoPosition = hasLogoPosition ? normalizeSurveyLogoPosition(req.body.logoPosition) : null;
+  const hasFontFamily = req.body?.fontFamily !== undefined;
+  const fontFamily = hasFontFamily ? normalizeSurveyFontFamily(req.body.fontFamily) : null;
+  const hasHeaderColor = req.body?.headerColor !== undefined;
+  const hasHeaderFontSize = req.body?.headerFontSize !== undefined;
+  const hasQuestionColor = req.body?.questionColor !== undefined;
+  const hasQuestionFontSize = req.body?.questionFontSize !== undefined;
+  const headerColor = hasHeaderColor ? normalizeSurveyColor(req.body.headerColor) : null;
+  const headerFontSize = hasHeaderFontSize ? normalizeSurveyFontSize(req.body.headerFontSize, 22) : null;
+  const questionColor = hasQuestionColor ? normalizeSurveyColor(req.body.questionColor, '#10213e') : null;
+  const questionFontSize = hasQuestionFontSize ? normalizeSurveyFontSize(req.body.questionFontSize, 42) : null;
   const questions = req.body?.questions === undefined ? null : normalizeQuestions(req.body.questions);
   if (req.body?.questions !== undefined && !questions) return res.status(400).json({ error: 'Revise as perguntas e opções da pesquisa.' });
   if (req.body?.title !== undefined && !title) return res.status(400).json({ error: 'O título é obrigatório.' });
   if (hasHeaderText && headerText === null) return res.status(400).json({ error: 'O texto acima da avaliação é inválido.' });
   if (hasLogoPosition && !logoPosition) return res.status(400).json({ error: 'A posição da logo é inválida.' });
+  if (hasFontFamily && !fontFamily) return res.status(400).json({ error: 'A fonte selecionada é inválida.' });
   const themeChanges = {};
   if (hasHeaderText) themeChanges.headerText = headerText;
   if (hasLogoPosition) themeChanges.logoPosition = logoPosition;
+  if (hasFontFamily) themeChanges.fontFamily = fontFamily;
+  if (hasHeaderColor) themeChanges.headerColor = headerColor;
+  if (hasHeaderFontSize) themeChanges.headerFontSize = headerFontSize;
+  if (hasQuestionColor) themeChanges.questionColor = questionColor;
+  if (hasQuestionFontSize) themeChanges.questionFontSize = questionFontSize;
   const published = req.body?.published === undefined ? null : Boolean(req.body.published);
   const client = await pool.connect();
   try {

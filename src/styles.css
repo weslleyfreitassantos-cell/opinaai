@@ -34,6 +34,7 @@ button { cursor: pointer; }
   border-radius: 28px;
   background: #fff;
   box-shadow: 0 24px 70px rgba(25, 65, 112, 0.13);
+  transform: translateY(30px);
 }
 
 .brand-panel {
@@ -110,7 +111,7 @@ p { margin-top: 0; }
 
 h1 {
   max-width: 580px;
-  margin: 28px 0 24px;
+  margin: 22px 0 18px;
   font-size: clamp(3rem, 4.4vw, 4.5rem);
   line-height: 0.94;
   letter-spacing: -0.04em;
@@ -129,13 +130,8 @@ h1 span { color: #a5f1ff; }
   display: block;
   width: min(100%, 530px);
   height: auto;
-  margin: 22px 0 4px;
+  margin: clamp(76px, 9vw, 104px) auto 4px;
   border-radius: 14px;
-}
-
-.tagline {
-  margin: auto 0 0;
-  font-size: 1.1rem;
 }
 
 .form-panel {
@@ -261,6 +257,8 @@ h2 {
 @media (max-width: 780px) { .dashboard-grid { grid-template-columns:1fr; } .dashboard { width:calc(100vw - 28px); margin:20px auto; } .dashboard-header { gap:18px; } }
 
 @media (max-width: 920px) {
+  .login-shell { transform: none; }
+  .form-panel__content { transform: none; }
   body { display: block; }
   .login-shell {
     grid-template-columns: 1fr;
@@ -282,8 +280,7 @@ h2 {
   .eyebrow { font-size: 11px; letter-spacing: 0.15em; }
   h1 { margin: 21px 0 18px; font-size: 3.15rem; }
   .intro { font-size: 0.98rem; }
-  .feedback-visual { margin-top: 24px; }
-  .tagline { margin-top: 20px; font-size: 0.95rem; }
+  .feedback-visual { margin-top: 30px; }
   .form-panel { padding: 42px 24px 48px; }
   h2 { margin-top: 20px; font-size: 2.45rem; }
   .form-intro { margin-bottom: 30px; font-size: 1rem; }

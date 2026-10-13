@@ -20,6 +20,11 @@ const DEFAULT_EMOJI_OPTIONS = [
   { value: '4', emoji: '🙂', label: 'Bom', animation: 'bounce' },
   { value: '5', emoji: '😍', label: 'Ótimo', animation: 'heart' },
 ];
+const ALLOWED_SURVEY_FONTS = new Set([
+  'Arial, sans-serif', 'Verdana, sans-serif', 'Tahoma, sans-serif', 'Trebuchet MS, sans-serif',
+  'Georgia, serif', 'Times New Roman, serif', 'Courier New, monospace', 'Lucida Sans, sans-serif',
+  'Impact, sans-serif', 'Comic Sans MS, cursive', 'Garamond, serif', 'Calibri, sans-serif',
+]);
 const ALLOWED_EMOJI_ANIMATIONS = new Set(['shake', 'float', 'pulse', 'bounce', 'heart']);
 const ALLOWED_LOGO_POSITIONS = new Set(['top', 'left', 'right', 'bottom']);
 const MAX_PENDING = 200;
@@ -266,6 +271,25 @@ export async function renderTablet(root) {
         }],
       }),
     }, { readOnly: previewRequested });
+    if (previewToken) {
+      let lastPreviewSignature = JSON.stringify(previewSurvey);
+      const refreshPreview = async () => {
+        try {
+          const response = await fetch('/api/survey-previews', {
+            headers: { 'X-Survey-Preview-Token': previewToken },
+            cache: 'no-store',
+          });
+          if (!response.ok) return;
+          const latestSurvey = (await response.json()).survey;
+          const latestSignature = JSON.stringify(latestSurvey);
+          if (latestSignature !== lastPreviewSignature) {
+            lastPreviewSignature = latestSignature;
+            renderSurvey(latestSurvey, { readOnly: true });
+          }
+        } catch { /* Keep the current preview when a refresh is temporarily unavailable. */ }
+      };
+      window.setInterval(refreshPreview, 2500);
+    }
     return;
   }
 
@@ -387,24 +411,33 @@ export async function renderTablet(root) {
     const questions = Array.isArray(survey.questions) ? survey.questions : [];
     const ratingConfirmation = questions.length === 1 && ['emoji', 'stars'].includes(questions[0]?.type);
     const quickSubmit = questions.length === 1 && !ratingConfirmation;
-    const headerText = typeof survey.theme?.headerText === 'string' ? survey.theme.headerText : DEFAULT_SURVEY_HEADER;
+    const headerText = survey.theme && Object.prototype.hasOwnProperty.call(survey.theme, 'headerText')
+      ? String(survey.theme.headerText ?? '')
+      : DEFAULT_SURVEY_HEADER;
     const logoData = safeImageDataUrl(survey.branding?.logoData);
     const logoPosition = ALLOWED_LOGO_POSITIONS.has(survey.theme?.logoPosition) ? survey.theme.logoPosition : 'top';
+    const fontFamily = ALLOWED_SURVEY_FONTS.has(survey.theme?.fontFamily) ? survey.theme.fontFamily : 'Arial, sans-serif';
+    const headerColor = /^#[0-9a-f]{6}$/i.test(survey.theme?.headerColor || '') ? survey.theme.headerColor : '#1269ea';
+    const headerFontSize = Number.isFinite(Number(survey.theme?.headerFontSize)) ? Math.min(72, Math.max(12, Number(survey.theme.headerFontSize))) : 22;
+    const questionColor = /^#[0-9a-f]{6}$/i.test(survey.theme?.questionColor || '') ? survey.theme.questionColor : '#10213e';
+    const questionFontSize = Number.isFinite(Number(survey.theme?.questionFontSize)) ? Math.min(100, Math.max(18, Number(survey.theme.questionFontSize))) : 42;
     const logoMarkup = logoData
       ? `<div class="survey-brand-logo-slot survey-brand-logo-slot--${logoPosition}"><img class="survey-brand-logo" src="${escapeHtml(logoData)}" alt="Logo da pesquisa"></div>`
       : '';
     const previewBadge = previewReadOnly
       ? '<p class="tablet-preview-badge">PRÉ-VISUALIZAÇÃO · AVALIAÇÕES DESATIVADAS</p>'
       : browserTestMode ? '<p class="browser-test-badge">MODO DE TESTE · NENHUMA RESPOSTA É ENVIADA</p>' : '';
-    const headerMarkup = `<header>${headerText ? `<p class="tablet-kicker">${escapeHtml(headerText)}</p>` : ''}${previewBadge}</header>`;
+    const headerMarkup = `<header>${headerText ? `<p class="tablet-kicker" style="color:${headerColor};font-size:${headerFontSize}px">${escapeHtml(headerText)}</p>` : ''}${previewBadge}</header>`;
     const logoBeforeHeader = ['top', 'left'].includes(logoPosition);
     const brandingMarkup = `<div class="survey-branding-group survey-branding-group--${logoPosition}" data-logo-position="${logoPosition}">${logoBeforeHeader ? logoMarkup + headerMarkup : headerMarkup + logoMarkup}</div>`;
     const submitButton = previewReadOnly || quickSubmit || ratingConfirmation ? '' : '<button class="kiosk-submit" type="submit">Enviar avaliação</button>';
-    root.innerHTML = `<main class="tablet-shell"><section class="survey-kiosk${previewReadOnly ? ' survey-kiosk--preview-readonly' : ''}">${brandingMarkup}<form id="kiosk-form" data-quick-submit="${quickSubmit}">${questions.map(renderQuestion).join('')}${submitButton}</form><footer>Opina AI · Pesquisa de satisfação</footer></section></main>`;
+    root.innerHTML = `<main class="tablet-shell"><section class="survey-kiosk${previewReadOnly ? ' survey-kiosk--preview-readonly' : ''}" style="--survey-font-family:${escapeHtml(fontFamily)};--survey-question-color:${questionColor};--survey-question-size:${questionFontSize}px">${brandingMarkup}<form id="kiosk-form" data-quick-submit="${quickSubmit}">${questions.map(renderQuestion).join('')}${submitButton}</form><footer>Opina AI · Pesquisa de satisfação</footer></section></main>`;
     applySurveyBackground(root.querySelector('.survey-kiosk'), survey.branding);
     const form = root.querySelector('#kiosk-form');
     form.onsubmit = previewReadOnly ? (event) => event.preventDefault() : submitSurvey;
-    if (previewReadOnly) form.querySelectorAll('input,button').forEach((element) => { element.disabled = true; });
+    // A prévia é somente leitura quanto ao envio, mas continua interativa:
+    // o cliente pode testar estrelas, emojis e notas sem registrar resposta.
+    if (previewReadOnly) form.querySelectorAll('button:not(.rating-confirm-button)').forEach((element) => { element.disabled = true; });
     if (quickSubmit && !previewReadOnly) form.addEventListener('change', submitSurvey);
     form.querySelectorAll('.rating-grid').forEach((grid) => {
       const inputs = [...grid.querySelectorAll('input')];
@@ -419,7 +452,14 @@ export async function renderTablet(root) {
           confirmation.querySelector('[data-rating-value]').textContent = input.dataset.ratingLabel || input.value;
         }
       }));
-      confirmation?.querySelector('.rating-confirm-button')?.addEventListener('click', () => submitSurvey({ preventDefault() {}, currentTarget: form }));
+      confirmation?.querySelector('.rating-confirm-button')?.addEventListener('click', () => {
+        if (previewReadOnly) {
+          renderThanks(false);
+          window.setTimeout(() => { if (activeSurvey?.id === survey.id && !root.querySelector('#kiosk-form')) renderSurvey(survey, { readOnly: true }); }, 2200);
+          return;
+        }
+        submitSurvey({ preventDefault() {}, currentTarget: form });
+      });
     });
   }
 

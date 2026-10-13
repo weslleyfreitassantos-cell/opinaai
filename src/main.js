@@ -27,6 +27,20 @@ const SURVEY_LOGO_POSITION_OPTIONS = [
   { value: 'right', label: 'À direita do texto' },
   { value: 'bottom', label: 'Abaixo do texto' },
 ];
+const SURVEY_FONT_OPTIONS = [
+  { value: 'Arial, sans-serif', label: 'Arial (negrito)' },
+  { value: 'Verdana, sans-serif', label: 'Verdana' },
+  { value: 'Tahoma, sans-serif', label: 'Tahoma' },
+  { value: 'Trebuchet MS, sans-serif', label: 'Trebuchet MS' },
+  { value: 'Georgia, serif', label: 'Georgia' },
+  { value: 'Times New Roman, serif', label: 'Times New Roman' },
+  { value: 'Courier New, monospace', label: 'Courier New' },
+  { value: 'Lucida Sans, sans-serif', label: 'Lucida Sans' },
+  { value: 'Impact, sans-serif', label: 'Impact' },
+  { value: 'Comic Sans MS, cursive', label: 'Comic Sans MS' },
+  { value: 'Garamond, serif', label: 'Garamond' },
+  { value: 'Calibri, sans-serif', label: 'Calibri' },
+];
 
 function normalizeEmojiOptions(options) {
   return DEFAULT_EMOJI_OPTIONS.map((fallback, index) => {
@@ -190,6 +204,8 @@ function openDialog({ title, description = '', fields = [], submitLabel = 'Salva
     ? `<div class="${fieldClass} survey-editor-branding">${[field.logo, field.background].map((item) => `<section class="survey-editor-branding__item"><div class="survey-editor-branding__preview" ${item.previewSrc ? '' : 'aria-hidden="true"'}>${item.previewSrc ? `<img src="${escapeHtml(item.previewSrc)}" alt="${escapeHtml(item.previewAlt)}">` : `<span>${escapeHtml(item.emptyLabel)}</span>`}</div><h3>${escapeHtml(item.label)}</h3><p>${escapeHtml(item.hint)}</p><label class="survey-editor-branding__upload">Selecionar imagem<input name="${escapeHtml(item.name)}" type="file" accept="${escapeHtml(item.accept)}"></label><label class="app-dialog__checkbox survey-editor-branding__remove" ${item.removeHidden ? 'hidden' : ''}><input name="${escapeHtml(item.removeName)}" type="checkbox" value="true"><span>${escapeHtml(item.removeLabel)}</span></label></section>`).join('')}</div>`
     : field.type === 'emoji-config'
     ? renderEmojiCustomizationFields(field.value, field.name, field.label || 'Personalizar carinhas animadas', fieldClass)
+    : field.type === 'text-style'
+    ? `<div class="${fieldClass} text-style-field"><span>${escapeHtml(field.label)}</span>${field.hint ? `<small>${escapeHtml(field.hint)}</small>` : ''}<div class="text-style-field__row"><input name="${escapeHtml(field.name)}" type="text" value="${escapeHtml(field.value || '')}" maxlength="${field.maxLength || 120}" ${field.required === false ? '' : 'required'}><input class="text-style-field__color" name="${escapeHtml(field.colorName)}" type="color" value="${escapeHtml(field.colorValue || '#10213e')}" aria-label="Cor do texto"><input class="text-style-field__size" name="${escapeHtml(field.sizeName)}" type="number" min="${field.minSize || 12}" max="${field.maxSize || 100}" value="${escapeHtml(field.sizeValue || 22)}" aria-label="Tamanho do texto"><span class="text-style-field__unit">px</span></div></div>`
     : field.type === 'select'
       ? `<label class="${fieldClass}">${escapeHtml(field.label)}<select name="${escapeHtml(field.name)}" required>${field.options.map((option) => `<option value="${escapeHtml(option.value)}" ${String(option.value) === String(field.value) ? 'selected' : ''}>${escapeHtml(option.label)}</option>`).join('')}</select></label>`
       : field.type === 'file'
@@ -210,6 +226,19 @@ function openDialog({ title, description = '', fields = [], submitLabel = 'Salva
   };
   dialogType?.addEventListener('change', syncDialogFields);
   syncDialogFields();
+  dialog.querySelectorAll('.survey-editor-branding__upload input[type="file"]').forEach((input) => {
+    input.addEventListener('change', () => {
+      const file = input.files?.[0];
+      const preview = input.closest('.survey-editor-branding__item')?.querySelector('.survey-editor-branding__preview');
+      if (!file || !preview) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        preview.innerHTML = `<img src="${escapeHtml(String(reader.result || ''))}" alt="Prévia da imagem selecionada">`;
+        preview.removeAttribute('aria-hidden');
+      };
+      reader.readAsDataURL(file);
+    });
+  });
   return new Promise((resolve) => {
     let settled = false;
     const finish = (value) => {
@@ -263,11 +292,9 @@ function renderLogin(root) {
       <div class="brand-panel">
         <div class="brand-panel__rings" aria-hidden="true"></div>
         <div class="brand-panel__content">
-          <p class="eyebrow">PESQUISA DE SATISFAÇÃO DIGITAL</p>
           <h1>Pesquisas de<br><span>satisfação</span></h1>
-          <p class="intro">Colete opiniões no tablet e acompanhe a experiência em tempo real.</p>
+          <p class="intro">Colete opiniões e acompanhe a experiência em tempo real.</p>
           <img class="feedback-visual" src="/assets/login-hero.webp" alt="Cartão Opina AI com rostos que representam níveis de satisfação">
-          <p class="tagline">Tablet, pesquisa e resultado. Sem distrações.</p>
         </div>
       </div>
       <div class="form-panel">
@@ -347,7 +374,7 @@ async function renderDashboard(root, user) {
   if (user.role === 'SUPERADMIN') tenants = await api('/api/tenants');
   if (!selectedTenantId && tenants.length) selectedTenantId = tenants[0].id;
 
-  const tenantOptions = () => tenants.map((tenant) => `<option value="${escapeHtml(tenant.name)}"></option>`).join('');
+  const tenantOptions = () => tenants.map((tenant) => `<option value="${escapeHtml(tenant.id)}">${escapeHtml(tenant.name)}</option>`).join('');
   const selectedTenantName = () => tenants.find((tenant) => String(tenant.id) === String(selectedTenantId))?.name || '';
   const tenantListMarkup = () => tenants.length
     ? tenants.map((tenant) => `<div class="tenant-row"><div><strong>${escapeHtml(tenant.name)}</strong><small>${escapeHtml(tenant.adminEmail || 'Administrador não cadastrado')} · Tablets ativos: ${Number(tenant.activeDevices || 0)} / ${Number(tenant.deviceLimit || 1)}</small></div><button class="outline-button edit-tenant" type="button" data-tenant-id="${tenant.id}">Editar empresa</button></div>`).join('')
@@ -358,30 +385,29 @@ async function renderDashboard(root, user) {
     <main class="dashboard dashboard-shell">
       <aside class="dashboard-sidebar">
         <div class="sidebar-brand"><span class="brand-symbol" aria-hidden="true">${dashboardIcon('spark')}</span><div><strong>Opina <em>AI</em></strong><small>Painel de satisfação</small></div></div>
-        <p class="sidebar-label">NAVEGAÇÃO</p>
         <nav class="dashboard-nav" aria-label="Navegação do painel">
           <a class="dashboard-nav__item is-active" data-view="overview" href="#overview"><span aria-hidden="true">${dashboardIcon('home')}</span> Visão geral</a>
           <a class="dashboard-nav__item" data-view="tablets" href="#tablets"><span aria-hidden="true">${dashboardIcon('tablet')}</span> Tablets</a>
+          ${user.role === 'SUPERADMIN' ? `<a class="dashboard-nav__item" data-view="administration" href="#administration"><span aria-hidden="true">${dashboardIcon('building')}</span> Empresas</a>` : ''}
           <a class="dashboard-nav__item" data-view="surveys" href="#surveys"><span aria-hidden="true">${dashboardIcon('survey')}</span> Pesquisas</a>
           <a class="dashboard-nav__item" data-view="reports" href="#reports"><span aria-hidden="true">${dashboardIcon('chart')}</span> Relatórios</a>
-          ${user.role === 'SUPERADMIN' ? `<a class="dashboard-nav__item" data-view="administration" href="#administration"><span aria-hidden="true">${dashboardIcon('building')}</span> Administração</a>` : ''}
         </nav>
-        <div class="sidebar-profile"><div class="sidebar-profile__details"><strong class="sidebar-profile__company" id="sidebar-company-name">${escapeHtml(tenants.find((tenant) => String(tenant.id) === String(selectedTenantId))?.name || 'Carregando empresa…')}</strong><span class="sidebar-profile__email">${escapeHtml(user.email)}</span><small class="sidebar-profile__role">${user.role === 'SUPERADMIN' ? 'Superadministrador' : 'Administrador'}</small></div></div>
+        <div class="sidebar-profile"><div class="sidebar-profile__details"><strong class="sidebar-profile__company" id="sidebar-company-name">${escapeHtml(tenants.find((tenant) => String(tenant.id) === String(selectedTenantId))?.name || 'Carregando empresa…')}</strong><span class="sidebar-profile__email">${escapeHtml(user.email)}</span><small class="sidebar-profile__role">${user.role === 'SUPERADMIN' ? 'Superadministrador' : 'Administrador'}</small><button id="logout" class="topbar-logout" type="button">Sair</button></div></div>
       </aside>
       <section class="dashboard-content">
         <header class="dashboard-topbar">
           <div class="mobile-brand"><span class="brand-symbol" aria-hidden="true">${dashboardIcon('spark')}</span><strong>Opina <em>AI</em></strong></div>
-          <div class="topbar-actions"><span id="dashboard-status" class="sync-status" role="status" aria-live="polite"><i></i>Atualizado</span><a class="primary-button" href="/tablet" target="_blank">Abrir tablet de teste <span aria-hidden="true">↗</span></a><button id="change-password" class="topbar-account" type="button">Minha senha</button><button id="logout" class="topbar-logout" type="button">Sair</button></div>
+          <div class="topbar-actions"><a class="primary-button" href="/tablet" target="_blank">Abrir tablet de teste <span aria-hidden="true">↗</span></a><button id="change-password" class="topbar-account" type="button">Minha senha</button></div>
         </header>
         <section id="overview" class="dashboard-page-header">
-          <div><p class="section-kicker">PAINEL</p><h1 id="page-title">Visão geral</h1><p id="page-subtitle" class="page-subtitle">Acompanhe as avaliações e a operação dos tablets.</p></div>
-          ${user.role === 'SUPERADMIN' ? `<label class="tenant-select"><span>Empresa</span><input id="tenant-filter" type="search" list="tenant-options" aria-label="Pesquisar empresa" placeholder="Digite para buscar empresa" autocomplete="off" value="${escapeHtml(selectedTenantName())}"><datalist id="tenant-options">${tenantOptions()}</datalist></label>` : ''}
+          <div><h1 id="page-title">Visão geral</h1><p id="page-subtitle" class="page-subtitle">Acompanhe as avaliações e a operação dos tablets.</p></div>
+          ${user.role === 'SUPERADMIN' ? `<label class="tenant-select"><span>Empresa selecionada</span><select id="tenant-filter" aria-label="Selecionar empresa"><option value="">Selecione uma empresa</option>${tenantOptions()}</select></label>` : ''}
         </section>
         <section class="dashboard-section overview-section" data-dashboard-view="overview">
           <div class="section-heading"><div><h2>Resumo</h2></div><span class="section-counter">Período atual</span></div>
           <div id="report-metrics" class="metric-grid overview-metrics"></div>
         </section>
-        ${user.role === 'SUPERADMIN' ? `<section id="administration" class="dashboard-section admin-tools" data-dashboard-view="administration"><div class="section-heading"><div><p class="section-kicker">ADMINISTRAÇÃO</p><h2>Gerenciar empresas</h2></div><button id="add-tenant" class="admin-add-company" type="button">Adicionar empresa <span aria-hidden="true">＋</span></button></div><article class="dashboard-card admin-management"><div class="tenant-list-heading"><strong>Empresas cadastradas</strong></div><div id="tenant-list" class="tenant-list">${tenantListMarkup()}</div><form id="tenant-form" class="form-grid form-grid--tenant"><label>Nome da empresa<input name="name" required></label><label>E-mail do administrador<input name="email" type="email" required></label><label>Senha inicial<input name="password" type="password" minlength="8" required></label><label>Limite de tablets<input name="deviceLimit" type="number" min="1" max="10000" step="1" value="1" required></label><div class="form-submit-row"><button class="submit-button compact" type="submit">Criar empresa <span aria-hidden="true">→</span></button><p class="inline-message" id="tenant-message" role="status"></p></div></form></article></section>` : ''}
+        ${user.role === 'SUPERADMIN' ? `<section id="administration" class="dashboard-section admin-tools" data-dashboard-view="administration"><div class="section-heading"><div><p class="section-kicker">EMPRESAS</p><h2>Selecionar empresa</h2><p class="page-subtitle">Escolha uma empresa para consultar tablets, pesquisas e emitir relatórios.</p></div><button id="add-tenant" class="admin-add-company" type="button">Adicionar empresa <span aria-hidden="true">＋</span></button></div><article class="dashboard-card admin-management"><div class="tenant-list-heading"><strong>Empresas cadastradas</strong></div><div id="tenant-list" class="tenant-list">${tenantListMarkup()}</div><form id="tenant-form" class="form-grid form-grid--tenant"><label>Nome da empresa<input name="name" required></label><label>E-mail do administrador<input name="email" type="email" required></label><label>Senha inicial<input name="password" type="password" minlength="8" required></label><label>Limite de tablets<input name="deviceLimit" type="number" min="1" max="10000" step="1" value="1" required></label><div class="form-submit-row"><button class="submit-button compact" type="submit">Criar empresa <span aria-hidden="true">→</span></button><p class="inline-message" id="tenant-message" role="status"></p></div></form></article></section>` : ''}
         <section id="tablets" class="dashboard-section" data-dashboard-view="tablets">
           <div class="section-heading"><div><p class="section-kicker">OPERAÇÃO</p><h2>Tablets</h2></div><span id="device-count" class="section-counter">Carregando...</span></div>
           <article class="dashboard-card action-card action-card--pair"><div class="action-card__icon" aria-hidden="true">${dashboardIcon('tablet')}</div><div class="action-card__intro"><h3>Parear tablet</h3><p>Conecte um dispositivo à operação.</p></div><form id="pair-form" class="form-stack"><label>Código exibido no tablet<input name="activationCode" inputmode="numeric" maxlength="6" pattern="[0-9]{6}" required placeholder="Ex.: 482913"></label><div class="form-grid"><label>Nome do tablet<input name="deviceName" placeholder="Tablet Recepção"></label><label>Unidade / local<input name="locationName" value="Recepção" required></label></div><div class="form-submit-row"><button class="submit-button compact" type="submit">Parear dispositivo <span aria-hidden="true">→</span></button><p class="inline-message" id="pair-message" role="status"></p></div></form></article>
@@ -398,11 +424,11 @@ async function renderDashboard(root, user) {
               <p class="section-kicker">RESULTADOS</p>
               <h2><span class="report-screen-title">Relatórios</span><span class="report-print-title">Relatório de satisfação</span></h2>
               <p id="report-company-subtitle" class="report-print-company"></p>
-              <div class="report-print-identity"><strong id="report-company-name"></strong><img id="report-company-logo" alt="Logo da empresa" hidden></div>
+              <div class="report-print-identity"><strong id="report-company-name"></strong><img id="report-company-logo" alt="Logo da empresa" hidden><span id="report-company-logo-placeholder" class="report-logo-missing" hidden aria-label="Selecione uma foto">Selecione uma foto</span></div>
             </div>
             <div class="section-heading__action"><span id="report-total" class="section-counter">Carregando...</span><button id="print-report" class="outline-button report-print-button" type="button"><span aria-hidden="true">${dashboardIcon('printer')}</span>Imprimir relatório</button></div>
           </div>
-          ${['SUPERADMIN', 'ADMIN'].includes(user.role) ? `<article id="report-branding-controls" class="dashboard-card report-branding-controls"><div class="report-branding-item"><div class="report-logo-preview"><img id="tenant-logo-preview" alt="Prévia da logo da empresa" hidden><span id="tenant-logo-placeholder" aria-hidden="true">${dashboardIcon('spark')}</span></div><div class="report-branding-copy"><strong>Logo do relatório</strong><small>PNG, JPEG ou WebP. Aparece somente no relatório impresso.</small><p id="tenant-logo-message" role="status" aria-live="polite"></p></div><div class="report-branding-actions"><label class="outline-button report-logo-select">Selecionar logo<input id="tenant-logo-input" type="file" accept="image/png,image/jpeg,image/webp"></label><button id="remove-tenant-logo" class="outline-button" type="button" disabled>Remover</button></div></div></article>` : ''}
+          ${['SUPERADMIN', 'ADMIN'].includes(user.role) ? `<article id="report-branding-controls" class="dashboard-card report-branding-controls"><div class="report-branding-item"><div class="report-logo-preview"><img id="tenant-logo-preview" alt="Prévia da logo da empresa" hidden><span id="tenant-logo-placeholder" class="report-logo-missing" aria-label="Selecione uma foto">${dashboardIcon('spark')}<small>Selecione uma foto</small></span></div><div class="report-branding-copy"><strong>Logo do relatório</strong><small>PNG, JPEG ou WebP. Aparece somente no relatório impresso.</small><p id="tenant-logo-message" role="status" aria-live="polite"></p></div><div class="report-branding-actions"><label class="outline-button report-logo-select">Selecionar logo<input id="tenant-logo-input" type="file" accept="image/png,image/jpeg,image/webp"></label><button id="remove-tenant-logo" class="outline-button" type="button" disabled>Remover</button></div></div></article>` : ''}
           <div id="report-print-context" class="report-print-context"></div>
           <div class="dashboard-card report-card"><div class="report-toolbar"><div class="date-row"><label>De <input id="from" type="date"></label><label>Até <input id="to" type="date"></label></div><div class="report-filters"><label>Pesquisa<select id="report-survey"><option value="">Todas</option></select></label><label>Unidade<select id="report-location"><option value="">Todas</option></select></label><label>Tablet<select id="report-device"><option value="">Todos</option></select></div><button id="load-report" class="outline-button" type="button">Atualizar <span aria-hidden="true">↻</span></button></div><div class="report-results"><div class="report-results__header"><h3>Distribuição</h3><span>Respostas por avaliação</span></div><div id="report-distribution" class="distribution-list"></div><div id="report-list" class="report-list"></div></div></div>
         </section>
@@ -422,7 +448,7 @@ async function renderDashboard(root, user) {
     root.querySelectorAll('.dashboard-nav__item').forEach((item) => item.classList.toggle('is-active', item.dataset.view === currentView));
     root.querySelector('#page-title').textContent = viewMeta[currentView][0];
     root.querySelector('#page-subtitle').textContent = viewMeta[currentView][1];
-    root.querySelector('.tenant-select')?.classList.toggle('is-view-hidden', currentView !== 'overview');
+    root.querySelector('.tenant-select')?.classList.toggle('is-view-hidden', !['overview', 'tablets', 'surveys', 'reports'].includes(currentView));
     if (updateHash && location.hash !== `#${currentView}`) history.replaceState(null, '', `#${currentView}`);
   };
   root.querySelectorAll('[data-view]').forEach((link) => link.addEventListener('click', (event) => {
@@ -463,11 +489,11 @@ async function renderDashboard(root, user) {
 
   if (user.role === 'SUPERADMIN') {
     root.querySelector('#add-tenant').onclick = () => root.querySelector('#tenant-form [name=name]').focus();
-    root.querySelector('#tenant-filter').onfocus = (event) => event.target.select();
+    root.querySelector('#tenant-filter').value = String(selectedTenantId || '');
     root.querySelector('#tenant-filter').onchange = async (event) => {
-      const selectedTenant = tenants.find((tenant) => tenant.name.toLocaleLowerCase('pt-BR') === event.target.value.trim().toLocaleLowerCase('pt-BR'));
+      const selectedTenant = tenants.find((tenant) => String(tenant.id) === String(event.target.value));
       if (!selectedTenant) {
-        event.target.value = selectedTenantName();
+        event.target.value = String(selectedTenantId || '');
         return;
       }
       selectedTenantId = selectedTenant.id;
@@ -595,7 +621,7 @@ async function renderDashboard(root, user) {
     };
   }
 
-  root.querySelector('#preview-survey').onclick = async (event) => {
+  root.querySelector('#preview-survey')?.addEventListener('click', async (event) => {
     const formElement = root.querySelector('#survey-form');
     if (!formElement.reportValidity()) return;
     const button = event.currentTarget;
@@ -637,7 +663,7 @@ async function renderDashboard(root, user) {
     } finally {
       button.disabled = false;
     }
-  };
+  });
 
   root.querySelector('#survey-form').onsubmit = async (event) => {
     event.preventDefault();
@@ -719,6 +745,7 @@ async function renderDashboard(root, user) {
     const reportCompanyName = root.querySelector('#report-company-name');
     const reportCompanySubtitle = root.querySelector('#report-company-subtitle');
     const reportLogo = root.querySelector('#report-company-logo');
+    const reportLogoPlaceholder = root.querySelector('#report-company-logo-placeholder');
 
     if (sidebarCompanyName) sidebarCompanyName.textContent = branding?.name || selectedTenant?.name || 'Empresa não selecionada';
     if (reportCompanyName) reportCompanyName.textContent = branding?.name || '';
@@ -726,11 +753,13 @@ async function renderDashboard(root, user) {
     if (reportIdentity) reportIdentity.hidden = !branding?.name && !logoData;
     if (reportLogo) {
       reportLogo.hidden = !logoData;
+      if (reportLogoPlaceholder) reportLogoPlaceholder.hidden = Boolean(logoData);
       if (logoData) {
         reportLogo.src = logoData;
         reportLogo.alt = branding?.name ? `Logo de ${branding.name}` : 'Logo da empresa';
       } else {
         reportLogo.removeAttribute('src');
+        reportLogo.alt = '';
       }
     }
     for (const asset of brandingAssets) {
@@ -850,6 +879,11 @@ async function renderDashboard(root, user) {
     if (user.role === 'SUPERADMIN') {
       tenants = await api('/api/tenants');
       root.querySelector('#tenant-list').innerHTML = tenantListMarkup();
+      const tenantFilter = root.querySelector('#tenant-filter');
+      if (tenantFilter) {
+        tenantFilter.innerHTML = `<option value="">Selecione uma empresa</option>${tenantOptions()}`;
+        tenantFilter.value = String(selectedTenantId || '');
+      }
     }
     const suffix = selectedTenantId ? `?tenantId=${encodeURIComponent(selectedTenantId)}` : '';
     const reportParams = new URLSearchParams();
@@ -869,7 +903,7 @@ async function renderDashboard(root, user) {
     ]);
 
     root.querySelector('#survey-list').innerHTML = surveys.length
-      ? surveys.map((survey) => `<div class="survey-row"><div class="survey-row__icon" aria-hidden="true">${dashboardIcon('survey')}</div><div class="survey-row__body"><strong>${escapeHtml(survey.title)}</strong><small><span class="status-pill ${survey.published ? 'status-pill--active' : 'status-pill--muted'}">${survey.published ? 'Ativa' : 'Inativa'}</span><span>${survey.assigned_devices || 0} tablet(s)</span></small></div><div class="row-actions"><button class="outline-button edit-survey" data-survey="${survey.id}">Editar</button><button class="outline-button toggle-survey" data-survey="${survey.id}" data-published="${survey.published}">${survey.published ? 'Desativar' : 'Ativar'}</button></div></div>`).join('')
+      ? surveys.map((survey) => `<div class="survey-row"><div class="survey-row__icon" aria-hidden="true">${dashboardIcon('survey')}</div><div class="survey-row__body"><strong>${escapeHtml(survey.title)}</strong><small><span class="status-pill ${survey.published ? 'status-pill--active' : 'status-pill--muted'}">${survey.published ? 'Ativa' : 'Inativa'}</span><span>${survey.assigned_devices || 0} tablet(s)</span></small></div><div class="row-actions"><button type="button" class="outline-button preview-survey" data-survey="${survey.id}" data-preview-token="${escapeHtml(survey.preview_token || '')}">Visualizar</button><button type="button" class="outline-button edit-survey" data-survey="${survey.id}">Editar</button><button type="button" class="outline-button toggle-survey" data-survey="${survey.id}" data-published="${survey.published}">${survey.published ? 'Desativar' : 'Ativar'}</button></div></div>`).join('')
       : '<p class="empty-state">Nenhuma pesquisa cadastrada.</p>';
 
     root.querySelector('#device-count').textContent = `${devices.length} dispositivo(s)`;
@@ -968,6 +1002,15 @@ async function renderDashboard(root, user) {
       return line;
     }));
     root.querySelector('#report-total').textContent = `Total de avaliações: ${metrics.total}`;
+    const reportResults = root.querySelector('.report-results');
+    let totalBottom = root.querySelector('#report-total-bottom');
+    if (!totalBottom) {
+      totalBottom = document.createElement('p');
+      totalBottom.id = 'report-total-bottom';
+      totalBottom.className = 'report-total-bottom';
+      reportResults.append(totalBottom);
+    }
+    totalBottom.textContent = `Total de avaliações: ${metrics.total}`;
     root.querySelector('#report-metrics').innerHTML = `<div class="metric-card metric-card--blue"><div class="metric-card__top"><span class="metric-card__icon" aria-hidden="true">${dashboardIcon('evaluations')}</span><span>Avaliações</span></div><strong>${metrics.total}</strong><small>No período</small></div><div class="metric-card metric-card--green"><div class="metric-card__top"><span class="metric-card__icon" aria-hidden="true">${dashboardIcon('satisfaction')}</span><span>Satisfação</span></div><strong>${Number(metrics.satisfiedRate || 0).toLocaleString('pt-BR')}%</strong><small>Clientes satisfeitos</small></div><div class="metric-card metric-card--purple"><div class="metric-card__top"><span class="metric-card__icon" aria-hidden="true">${dashboardIcon('rating')}</span><span>Nota média</span></div><strong>${metrics.averageScore === null ? '—' : Number(metrics.averageScore).toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}</strong><small>De 1 a 5</small></div><div class="metric-card metric-card--orange"><div class="metric-card__top"><span class="metric-card__icon" aria-hidden="true">${dashboardIcon('dissatisfaction')}</span><span>Insatisfação</span></div><strong>${Number(metrics.dissatisfiedRate || 0).toLocaleString('pt-BR')}%</strong><small>Clientes insatisfeitos</small></div>`;
     root.querySelector('#report-distribution').innerHTML = report.distribution?.length
       ? report.distribution.map((item) => `<div class="distribution-row"><span class="distribution-label"><span class="distribution-emoji" aria-hidden="true">${escapeHtml(item.emoji)}</span><span>${escapeHtml(item.label)}</span></span><span class="distribution-bar"><i style="width:${metrics.total ? Math.min(100, (item.count / metrics.total) * 100) : 0}%"></i></span><strong>${item.count}</strong></div>`).join('')
@@ -1025,9 +1068,10 @@ async function renderDashboard(root, user) {
           description: 'Altere a pesquisa e, se quiser, personalize a logo e o fundo exibidos no tablet.',
           fields: [
             { name: 'title', label: 'Título da pesquisa', value: survey.title },
-            { name: 'headerText', label: 'Texto acima das avaliações', value: typeof survey.theme?.headerText === 'string' ? survey.theme.headerText : DEFAULT_SURVEY_HEADER, maxLength: 120, required: false },
-            { name: 'questionText', label: 'Pergunta para o cliente', value: question?.text || survey.description || '' },
+            { name: 'headerText', label: 'Texto acima das avaliações', hint: 'Deixe vazio para ocultar esse texto no tablet.', type: 'text-style', value: typeof survey.theme?.headerText === 'string' ? survey.theme.headerText : DEFAULT_SURVEY_HEADER, colorName: 'headerColor', colorValue: survey.theme?.headerColor || '#1269ea', sizeName: 'headerFontSize', sizeValue: survey.theme?.headerFontSize || 22, minSize: 12, maxSize: 72, required: false },
+            { name: 'questionText', label: 'Pergunta para o cliente', type: 'text-style', value: question?.text || survey.description || '', colorName: 'questionColor', colorValue: survey.theme?.questionColor || '#10213e', sizeName: 'questionFontSize', sizeValue: survey.theme?.questionFontSize || 42, minSize: 18, maxSize: 100 },
             { name: 'logoPosition', label: 'Posição da logo em relação ao texto acima das avaliações', type: 'select', value: survey.theme?.logoPosition || 'top', options: SURVEY_LOGO_POSITION_OPTIONS },
+            { name: 'fontFamily', label: 'Fonte do texto padrão', type: 'select', value: survey.theme?.fontFamily || SURVEY_FONT_OPTIONS[0].value, options: SURVEY_FONT_OPTIONS },
             { name: 'type', label: 'Tipo de resposta', value: question?.type || 'emoji', type: 'select', options: [
               { value: 'emoji', label: 'Carinhas animadas' },
               { value: 'stars', label: 'Estrelas (1 a 5)' },
@@ -1063,7 +1107,7 @@ async function renderDashboard(root, user) {
           else if (values.removeLogo) brandingUpdate.logoData = null;
           if (values.backgroundFile?.size) brandingUpdate.backgroundData = await prepareTenantImage(values.backgroundFile, 'background');
           else if (values.removeBackground) brandingUpdate.backgroundData = null;
-          await api(`/api/surveys/${survey.id}`, { method: 'PATCH', body: JSON.stringify({ title: values.title, headerText: values.headerText, logoPosition: values.logoPosition, description: values.questionText, questions: [nextQuestion] }) });
+          await api(`/api/surveys/${survey.id}`, { method: 'PATCH', body: JSON.stringify({ title: values.title, headerText: values.headerText, headerColor: values.headerColor, headerFontSize: values.headerFontSize, questionColor: values.questionColor, questionFontSize: values.questionFontSize, logoPosition: values.logoPosition, fontFamily: values.fontFamily, description: values.questionText, questions: [nextQuestion] }) });
           if (Object.keys(brandingUpdate).length) {
             await api(`/api/surveys/${survey.id}/branding`, { method: 'PUT', body: JSON.stringify(brandingUpdate) });
           }
@@ -1073,6 +1117,31 @@ async function renderDashboard(root, user) {
           status.innerHTML = `<i></i>${escapeHtml(error.message)}`;
           status.classList.add('sync-status--error');
         } finally { button.disabled = false; }
+      };
+    });
+    root.querySelectorAll('.preview-survey').forEach((button) => {
+      button.onclick = async () => {
+        const fixedToken = button.dataset.previewToken;
+        if (fixedToken) {
+          window.open(`/tablet#previewToken=${encodeURIComponent(fixedToken)}`, '_blank', 'noopener,noreferrer');
+          return;
+        }
+        const previewWindow = window.open('about:blank', '_blank');
+        if (!previewWindow) return;
+        button.disabled = true;
+        const originalLabel = button.textContent;
+        button.textContent = 'Abrindo…';
+        try {
+          const { token } = await api(`/api/surveys/${encodeURIComponent(button.dataset.survey)}/preview`, { method: 'POST' });
+          navigateServerPreviewWindow(previewWindow, token);
+        } catch (error) {
+          previewWindow.close();
+          const status = root.querySelector('#dashboard-status');
+          if (status) status.textContent = error.message || 'Não foi possível abrir a visualização.';
+        } finally {
+          button.disabled = false;
+          button.textContent = originalLabel;
+        }
       };
     });
     root.querySelectorAll('.toggle-survey').forEach((button) => {
