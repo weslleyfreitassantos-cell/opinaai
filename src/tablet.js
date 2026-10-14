@@ -562,7 +562,14 @@ export async function renderTablet(root) {
         activeSurvey = null;
         ensureActivation(id);
         waitingForPairing = true;
-        await register();
+        try {
+          await register();
+        } catch (error) {
+          // The pairing endpoint is rate-limited. A temporary 429 must not
+          // make a connected tablet look offline: the persisted activation
+          // code can remain visible while the next refresh retries register.
+          if (!isTransientError(error) && error?.status !== 429) throw error;
+        }
         renderPairing();
         return;
       }
