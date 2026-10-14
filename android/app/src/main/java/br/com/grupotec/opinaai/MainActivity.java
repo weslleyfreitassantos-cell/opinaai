@@ -4,6 +4,7 @@ import android.os.Bundle;
 import android.app.admin.DevicePolicyManager;
 import android.content.ComponentName;
 import android.content.Context;
+import android.content.pm.ActivityInfo;
 import android.view.View;
 import android.view.Window;
 import android.webkit.WebSettings;
@@ -20,6 +21,10 @@ public class MainActivity extends BridgeActivity {
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
+        // Apply portrait before Capacitor creates the WebView. This prevents
+        // the first launch from rendering the kiosk layout in landscape when
+        // the tablet was left rotated during installation.
+        setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
         registerPlugin(OpinaSecureStoragePlugin.class);
         registerPlugin(OpinaRuntimePlugin.class);
         super.onCreate(savedInstanceState);
