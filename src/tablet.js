@@ -147,11 +147,6 @@ function cachedSurvey() {
 }
 
 function currentConfigVersion() {
-  // A versão só pode ser reutilizada quando a pesquisa correspondente
-  // também está disponível localmente. Sem o cache, pedir `unchanged`
-  // deixaria o tablet preso na tela de preparação.
-  const cached = cachedSurvey();
-  if (!cached?.id || !Array.isArray(cached.questions)) return 0;
   return Number(localStorage.getItem(KEYS.configVersion) || 0) || 0;
 }
 
@@ -371,7 +366,7 @@ export async function renderTablet(root) {
   }
 
   function renderAdminUnlocked() {
-    root.innerHTML = '<main class="tablet-shell"><section class="tablet-card kiosk-unlocked-card"><p class="tablet-kicker">ACESSO ADMINISTRATIVO</p><h1>Tablet liberado</h1><p class="tablet-copy">O modo quiosque foi desativado temporariamente. Faça os ajustes necessários e bloqueie novamente antes de devolver o tablet ao atendimento.</p><div class="kiosk-unlocked-card__actions"><button class="kiosk-reenter-button" type="button">Voltar ao modo quiosque</button><button class="kiosk-unpair-button" type="button">Desvincular tablet</button></div><p class="kiosk-unlocked-card__status" role="status" aria-live="polite"></p></section></main>';
+    root.innerHTML = '<main class="tablet-shell"><section class="tablet-card kiosk-unlocked-card"><p class="tablet-kicker">ACESSO ADMINISTRATIVO</p><h1>Tablet liberado</h1><p class="tablet-copy">O modo quiosque foi desativado temporariamente. Faça os ajustes necessários e bloqueie novamente antes de devolver o tablet ao atendimento.</p><button class="kiosk-reenter-button" type="button">Voltar ao modo quiosque</button></section></main>';
     root.querySelector('.kiosk-reenter-button').onclick = async () => {
       try { await nativeRuntimePlugin()?.reenterKiosk?.(); } finally {
         kioskUnlocked = false;
@@ -379,70 +374,6 @@ export async function renderTablet(root) {
         else await refreshConfig();
       }
     };
-    root.querySelector('.kiosk-unpair-button').onclick = unpairTablet;
-  }
-
-  async function unpairTablet() {
-    if (!window.confirm('Desvincular este tablet? Ele perderá a empresa e a pesquisa atuais e exibirá um novo código de pareamento.')) return;
-    const button = root.querySelector('.kiosk-unpair-button');
-    const status = root.querySelector('.kiosk-unlocked-card__status');
-    if (!button || !status) return;
-    button.disabled = true;
-    status.textContent = 'Desvinculando este tablet...';
-    try {
-      await deviceRequest('/api/devices/self/unpair', id, {
-        method: 'POST',
-        body: JSON.stringify({ deviceId: id.deviceId }),
-      });
-      activeSurvey = null;
-      waitingForPairing = true;
-      localStorage.removeItem(KEYS.surveyCache);
-      localStorage.removeItem(KEYS.configVersion);
-      localStorage.removeItem(KEYS.activation);
-      try { await nativeRuntimePlugin()?.reenterKiosk?.(); } catch { /* The pairing screen remains available if kiosk lock fails. */ }
-      kioskUnlocked = false;
-      ensureActivation(id);
-      await register();
-      renderPairing();
-    } catch (error) {
-      status.textContent = error?.message || 'Não foi possível desvincular o tablet. Tente novamente.';
-      button.disabled = false;
-    }
-  }
-
-  async function ensureInitialAdminPin() {
-    const plugin = nativeRuntimePlugin();
-    if (!plugin?.getInfo || !plugin?.configureAdminPin) return;
-    let pinConfigured = true;
-    try { pinConfigured = (await plugin.getInfo())?.adminPinConfigured !== false; } catch { return; }
-    if (pinConfigured) return;
-
-    await new Promise((resolve) => {
-      root.innerHTML = '<main class="tablet-shell"><section class="tablet-card kiosk-pin-setup-card"><p class="tablet-kicker">PRIMEIRO ACESSO</p><h1>Adicione um PIN</h1><p class="tablet-copy">Crie o PIN administrativo deste tablet antes de conectá-lo ao painel.</p><form class="kiosk-pin-setup-form"><label>Novo PIN<input name="pin" type="password" inputmode="numeric" pattern="[0-9]{4,8}" minlength="4" maxlength="8" autocomplete="new-password" required></label><label>Confirmar PIN<input name="pinConfirm" type="password" inputmode="numeric" pattern="[0-9]{4,8}" minlength="4" maxlength="8" autocomplete="new-password" required></label><p class="kiosk-exit-dialog__error" role="alert" hidden></p><button class="kiosk-exit-dialog__submit" type="submit">Salvar PIN e continuar</button></form></section></main>';
-      const form = root.querySelector('.kiosk-pin-setup-form');
-      const input = form.querySelector('[name=pin]');
-      const confirm = form.querySelector('[name=pinConfirm]');
-      const error = form.querySelector('.kiosk-exit-dialog__error');
-      form.onsubmit = async (event) => {
-        event.preventDefault();
-        const submit = form.querySelector('button[type=submit]');
-        submit.disabled = true;
-        error.hidden = true;
-        try {
-          const pin = input.value.trim();
-          if (!/^\d{4,8}$/.test(pin)) throw new Error('admin_pin_invalid');
-          if (pin !== confirm.value.trim()) throw new Error('admin_pin_mismatch');
-          await plugin.configureAdminPin({ pin });
-          resolve();
-        } catch (setupError) {
-          error.textContent = setupError?.message === 'admin_pin_mismatch' ? 'Os PINs não conferem.' : 'Informe um PIN de 4 a 8 números.';
-          error.hidden = false;
-          submit.disabled = false;
-          input.select();
-        }
-      };
-      input.focus();
-    });
   }
 
   async function register() {
@@ -676,11 +607,10 @@ export async function renderTablet(root) {
     } catch { /* o polling seguinte tenta novamente */ }
   }
 
-  await ensureInitialAdminPin();
   try { await register(); } catch { /* refreshConfig exibirá o estado de conexão */ }
   await refreshConfig();
   setInterval(refreshConfig, 10_000);
-  setInterval(heartbeat, 30_000);
+  setInterval(heartbeat, 10_000);
   window.addEventListener('online', () => { heartbeat(); refreshConfig(); });
 }
 

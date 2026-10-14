@@ -374,7 +374,7 @@ async function renderDashboard(root, user) {
   if (user.role === 'SUPERADMIN') tenants = await api('/api/tenants');
   if (!selectedTenantId && tenants.length) selectedTenantId = tenants[0].id;
 
-  const tenantOptions = () => tenants.map((tenant) => `<option value="${escapeHtml(tenant.name)}"></option>`).join('');
+  const tenantOptions = () => tenants.map((tenant) => `<option value="${escapeHtml(tenant.id)}">${escapeHtml(tenant.name)}</option>`).join('');
   const selectedTenantName = () => tenants.find((tenant) => String(tenant.id) === String(selectedTenantId))?.name || '';
   const tenantListMarkup = () => tenants.length
     ? tenants.map((tenant) => `<div class="tenant-row"><div><strong>${escapeHtml(tenant.name)}</strong><small>${escapeHtml(tenant.adminEmail || 'Administrador não cadastrado')} · Tablets ativos: ${Number(tenant.activeDevices || 0)} / ${Number(tenant.deviceLimit || 1)}</small></div><button class="outline-button edit-tenant" type="button" data-tenant-id="${tenant.id}">Editar empresa</button></div>`).join('')
@@ -388,7 +388,7 @@ async function renderDashboard(root, user) {
         <nav class="dashboard-nav" aria-label="Navegação do painel">
           <a class="dashboard-nav__item is-active" data-view="overview" href="#overview"><span aria-hidden="true">${dashboardIcon('home')}</span> Visão geral</a>
           <a class="dashboard-nav__item" data-view="tablets" href="#tablets"><span aria-hidden="true">${dashboardIcon('tablet')}</span> Tablets</a>
-          ${user.role === 'SUPERADMIN' ? `<a class="dashboard-nav__item" data-view="administration" href="#administration"><span aria-hidden="true">${dashboardIcon('building')}</span> Administração</a>` : ''}
+          ${user.role === 'SUPERADMIN' ? `<a class="dashboard-nav__item" data-view="administration" href="#administration"><span aria-hidden="true">${dashboardIcon('building')}</span> Empresas</a>` : ''}
           <a class="dashboard-nav__item" data-view="surveys" href="#surveys"><span aria-hidden="true">${dashboardIcon('survey')}</span> Pesquisas</a>
           <a class="dashboard-nav__item" data-view="reports" href="#reports"><span aria-hidden="true">${dashboardIcon('chart')}</span> Relatórios</a>
         </nav>
@@ -401,16 +401,16 @@ async function renderDashboard(root, user) {
         </header>
         <section id="overview" class="dashboard-page-header">
           <div><h1 id="page-title">Visão geral</h1><p id="page-subtitle" class="page-subtitle">Acompanhe as avaliações e a operação dos tablets.</p></div>
-          ${user.role === 'SUPERADMIN' ? `<label class="tenant-select"><span>Empresa</span><input id="tenant-filter" type="search" list="tenant-options" aria-label="Pesquisar empresa" placeholder="Digite para buscar empresa" autocomplete="off" value="${escapeHtml(selectedTenantName())}"><datalist id="tenant-options">${tenantOptions()}</datalist></label>` : ''}
+          ${user.role === 'SUPERADMIN' ? `<label class="tenant-select"><span>Empresa selecionada</span><select id="tenant-filter" aria-label="Selecionar empresa"><option value="">Selecione uma empresa</option>${tenantOptions()}</select></label>` : ''}
         </section>
         <section class="dashboard-section overview-section" data-dashboard-view="overview">
           <div class="section-heading"><div><h2>Resumo</h2></div><span class="section-counter">Período atual</span></div>
           <div id="report-metrics" class="metric-grid overview-metrics"></div>
         </section>
-        ${user.role === 'SUPERADMIN' ? `<section id="administration" class="dashboard-section admin-tools" data-dashboard-view="administration"><div class="section-heading"><div><p class="section-kicker">ADMINISTRAÇÃO</p><h2>Gerenciar empresas</h2></div><button id="add-tenant" class="admin-add-company" type="button">Adicionar empresa <span aria-hidden="true">＋</span></button></div><article class="dashboard-card admin-management"><div class="tenant-list-heading"><strong>Empresas cadastradas</strong></div><div id="tenant-list" class="tenant-list">${tenantListMarkup()}</div><form id="tenant-form" class="form-grid form-grid--tenant"><label>Nome da empresa<input name="name" required></label><label>E-mail do administrador<input name="email" type="email" required></label><label>Senha inicial<input name="password" type="password" minlength="8" required></label><label>Limite de tablets<input name="deviceLimit" type="number" min="1" max="10000" step="1" value="1" required></label><div class="form-submit-row"><button class="submit-button compact" type="submit">Criar empresa <span aria-hidden="true">→</span></button><p class="inline-message" id="tenant-message" role="status"></p></div></form></article></section>` : ''}
+        ${user.role === 'SUPERADMIN' ? `<section id="administration" class="dashboard-section admin-tools" data-dashboard-view="administration"><div class="section-heading"><div><p class="section-kicker">EMPRESAS</p><h2>Selecionar empresa</h2><p class="page-subtitle">Escolha uma empresa para consultar tablets, pesquisas e emitir relatórios.</p></div><button id="add-tenant" class="admin-add-company" type="button">Adicionar empresa <span aria-hidden="true">＋</span></button></div><article class="dashboard-card admin-management"><div class="tenant-list-heading"><strong>Empresas cadastradas</strong></div><div id="tenant-list" class="tenant-list">${tenantListMarkup()}</div><form id="tenant-form" class="form-grid form-grid--tenant"><label>Nome da empresa<input name="name" required></label><label>E-mail do administrador<input name="email" type="email" required></label><label>Senha inicial<input name="password" type="password" minlength="8" required></label><label>Limite de tablets<input name="deviceLimit" type="number" min="1" max="10000" step="1" value="1" required></label><div class="form-submit-row"><button class="submit-button compact" type="submit">Criar empresa <span aria-hidden="true">→</span></button><p class="inline-message" id="tenant-message" role="status"></p></div></form></article></section>` : ''}
         <section id="tablets" class="dashboard-section" data-dashboard-view="tablets">
-          <div class="section-heading"><div><p class="section-kicker">OPERAÇÃO</p><h2>Tablets</h2></div><span id="device-count" class="section-counter">Carregando...</span></div>
-          <article class="dashboard-card action-card action-card--pair"><div class="action-card__icon" aria-hidden="true">${dashboardIcon('tablet')}</div><div class="action-card__intro"><h3>Parear tablet</h3><p>Conecte um dispositivo à operação.</p></div><form id="pair-form" class="form-stack"><label>Código exibido no tablet<input name="activationCode" inputmode="numeric" maxlength="6" pattern="[0-9]{6}" required placeholder="Ex.: 482913"></label><div class="form-grid"><label>Nome do tablet<input name="deviceName" placeholder="Tablet Recepção"></label><label>Unidade / local<input name="locationName" value="Recepção" required></label></div><div class="form-submit-row"><button class="submit-button compact" type="submit">Parear dispositivo <span aria-hidden="true">→</span></button><p class="inline-message" id="pair-message" role="status"></p></div></form></article>
+          <div class="section-heading"><div><p class="section-kicker">OPERAÇÃO</p><h2>Tablets <small id="device-license-count" class="device-license-count">Carregando licenças...</small></h2></div><div class="device-list-controls"><div class="device-list-actions"><label class="device-status-filter"><span>Exibir</span><select id="device-status-filter"><option value="all">Todos</option><option value="online">Online</option><option value="offline">Offline</option></select><strong id="device-count">Carregando...</strong></label><button id="toggle-device-list" class="outline-button" type="button">Recolher tablets</button></div></div></div>
+          <article class="dashboard-card action-card action-card--pair"><div class="action-card__icon" aria-hidden="true">${dashboardIcon('tablet')}</div><div class="action-card__intro"><h3>Parear tablet</h3><p>Conecte um dispositivo à operação.</p></div><div class="device-search-anchor"><input id="device-search" class="device-search" type="search" placeholder="Pesquisar tablet pelo nome" aria-label="Pesquisar tablet pelo nome"></div><form id="pair-form" class="form-stack"><label>Código exibido no tablet<input name="activationCode" inputmode="numeric" maxlength="6" pattern="[0-9]{6}" required placeholder="Ex.: 482913"></label><div class="form-grid"><label>Nome do tablet<input name="deviceName" placeholder="Tablet Recepção"></label><label>Unidade / local<input name="locationName" value="Recepção" required></label></div><div class="form-submit-row"><button class="submit-button compact" type="submit">Parear dispositivo <span aria-hidden="true">→</span></button><p class="inline-message" id="pair-message" role="status"></p></div></form></article>
           <div class="dashboard-card dashboard-card--flush"><div id="device-list" class="device-list">Carregando...</div></div>
         </section>
         <section id="surveys" class="dashboard-section" data-dashboard-view="surveys">
@@ -489,11 +489,11 @@ async function renderDashboard(root, user) {
 
   if (user.role === 'SUPERADMIN') {
     root.querySelector('#add-tenant').onclick = () => root.querySelector('#tenant-form [name=name]').focus();
-    root.querySelector('#tenant-filter').value = selectedTenantName();
+    root.querySelector('#tenant-filter').value = String(selectedTenantId || '');
     root.querySelector('#tenant-filter').onchange = async (event) => {
-      const selectedTenant = tenants.find((tenant) => tenant.name.toLocaleLowerCase('pt-BR') === event.target.value.trim().toLocaleLowerCase('pt-BR'));
+      const selectedTenant = tenants.find((tenant) => String(tenant.id) === String(event.target.value));
       if (!selectedTenant) {
-        event.target.value = selectedTenantName();
+        event.target.value = String(selectedTenantId || '');
         return;
       }
       selectedTenantId = selectedTenant.id;
@@ -705,6 +705,9 @@ async function renderDashboard(root, user) {
         body: JSON.stringify({ ...Object.fromEntries(form), tenantId: selectedTenantId || undefined }),
       });
       message.textContent = 'Tablet pareado com sucesso.';
+      window.setTimeout(() => {
+        if (message.textContent === 'Tablet pareado com sucesso.') message.textContent = '';
+      }, 1000);
       event.target.reset(); event.target.querySelector('[name=locationName]').value = 'Recepção';
       await loadDashboardData();
     } catch (error) { message.textContent = error.message; } finally { submitButton.disabled = false; }
@@ -881,11 +884,13 @@ async function renderDashboard(root, user) {
       root.querySelector('#tenant-list').innerHTML = tenantListMarkup();
       const tenantFilter = root.querySelector('#tenant-filter');
       if (tenantFilter) {
-        root.querySelector('#tenant-options').innerHTML = tenantOptions();
-        tenantFilter.value = selectedTenantName();
+        tenantFilter.innerHTML = `<option value="">Selecione uma empresa</option>${tenantOptions()}`;
+        tenantFilter.value = String(selectedTenantId || '');
       }
     }
-    const suffix = selectedTenantId ? `?tenantId=${encodeURIComponent(selectedTenantId)}` : '';
+    const suffix = selectedTenantId
+      ? `?tenantId=${encodeURIComponent(selectedTenantId)}${user.role === 'SUPERADMIN' ? '&includeUnpaired=1' : ''}`
+      : '';
     const reportParams = new URLSearchParams();
     if (selectedTenantId) reportParams.set('tenantId', selectedTenantId);
     if (root.querySelector('#from').value) reportParams.set('from', root.querySelector('#from').value);
@@ -906,13 +911,43 @@ async function renderDashboard(root, user) {
       ? surveys.map((survey) => `<div class="survey-row"><div class="survey-row__icon" aria-hidden="true">${dashboardIcon('survey')}</div><div class="survey-row__body"><strong>${escapeHtml(survey.title)}</strong><small><span class="status-pill ${survey.published ? 'status-pill--active' : 'status-pill--muted'}">${survey.published ? 'Ativa' : 'Inativa'}</span><span>${survey.assigned_devices || 0} tablet(s)</span></small></div><div class="row-actions"><button type="button" class="outline-button preview-survey" data-survey="${survey.id}" data-preview-token="${escapeHtml(survey.preview_token || '')}">Visualizar</button><button type="button" class="outline-button edit-survey" data-survey="${survey.id}">Editar</button><button type="button" class="outline-button toggle-survey" data-survey="${survey.id}" data-published="${survey.published}">${survey.published ? 'Desativar' : 'Ativar'}</button></div></div>`).join('')
       : '<p class="empty-state">Nenhuma pesquisa cadastrada.</p>';
 
-    root.querySelector('#device-count').textContent = `${devices.length} dispositivo(s)`;
-    root.querySelector('#device-list').innerHTML = devices.length ? devices.map((device) => `
-      <div class="device-row ${device.active ? '' : 'device-row--inactive'}">
-        <div class="device-summary"><div class="device-name-row"><span class="status-dot ${device.runtime_status === 'online' ? 'status-dot--online' : 'status-dot--offline'}" aria-hidden="true"></span><strong>${escapeHtml(device.name)}</strong><span class="device-status-label">${device.runtime_status === 'online' ? 'Online' : 'Offline'}</span>${device.active ? '' : '<span class="status-pill status-pill--muted">Desativado</span>'}</div><small class="device-location">${escapeHtml(device.location_name || 'Sem unidade')} · Pesquisa: <strong>${escapeHtml(device.active_survey_title || 'Nenhuma')}</strong></small><details class="device-details"><summary>Ver detalhes</summary><div class="device-meta"><span>Visto ${device.last_seen_at ? escapeHtml(new Date(device.last_seen_at).toLocaleString('pt-BR')) : 'nunca'}</span><span>${escapeHtml(device.manufacturer || '—')} ${escapeHtml(device.model || '')} · Android ${escapeHtml(device.android_version || '—')}</span><span>Bateria ${device.battery_level === null || device.battery_level === undefined ? '—' : `${device.battery_level}%`}${device.charging === true ? ' · carregando' : ''} · ${escapeHtml(device.network_state || '—')}</span><span>Pendentes: ${device.pending_responses ?? '—'} · ${escapeHtml(device.orientation || '—')}</span></div></details></div>
-        <div class="device-assign"><div class="device-assign__primary"><select data-survey-for="${device.id}"><option value="">Escolha uma pesquisa</option>${surveys.map((survey) => `<option value="${survey.id}" ${String(survey.id) === String(device.active_survey_id) ? 'selected' : ''}>${escapeHtml(survey.title)}</option>`).join('')}</select><button class="outline-button assign-button" data-device="${device.id}">Aplicar</button><button class="outline-button preview-device" data-device="${device.id}" ${device.active_survey_id ? '' : 'disabled'}>Pré-visualizar</button></div><span class="device-preview-message" data-preview-message="${device.id}" role="status" aria-live="polite"></span><details class="device-actions"><summary>Gerenciar</summary><div class="device-actions__menu"><button class="outline-button refresh-config" data-device="${device.id}">Atualizar config.</button><button class="outline-button clear-survey" data-device="${device.id}">Remover pesquisa</button><button class="outline-button edit-device" data-device="${device.id}" data-name="${escapeHtml(device.name)}" data-location="${escapeHtml(device.location_name || '')}">Editar</button><button class="outline-button unpair-device" data-device="${device.id}">Desparear</button>${device.active ? `<button class="outline-button danger-button deactivate-device" data-device="${device.id}">Desativar</button>` : ''}</div></details></div>
+    const selectedTenant = tenants.find((tenant) => String(tenant.id) === String(selectedTenantId));
+    const licenseLimit = Number(devices.find((device) => device.tenant_device_limit !== null && device.tenant_device_limit !== undefined)?.tenant_device_limit || selectedTenant?.deviceLimit || 1);
+    const unpairedSlots = Array.from({ length: Math.max(0, licenseLimit - devices.length) }, (_, index) => ({
+      id: `unpaired-${index + 1}`,
+      name: `Tablet ${devices.length + index + 1}`,
+      tenant_id: selectedTenantId,
+      active: false,
+      is_unpaired: true,
+      runtime_status: 'unpaired',
+      active_survey_title: null,
+      location_name: null,
+      paired_at: null,
+    }));
+    const deviceRows = [...devices, ...unpairedSlots];
+    const deviceStatusFilter = root.querySelector('#device-status-filter');
+    const deviceSearch = root.querySelector('#device-search');
+    const searchTerm = String(deviceSearch?.value || '').trim().toLocaleLowerCase('pt-BR');
+    const visibleDevices = deviceRows.filter((device) => {
+      const matchesStatus = deviceStatusFilter?.value === 'online' ? device.runtime_status === 'online' : deviceStatusFilter?.value === 'offline' ? device.runtime_status === 'offline' : true;
+      return matchesStatus && (!searchTerm || String(device.name || '').toLocaleLowerCase('pt-BR').includes(searchTerm));
+    });
+    root.querySelector('#device-license-count').textContent = `${devices.filter((device) => device.active !== false && String(device.tenant_id) === String(selectedTenantId)).length} de ${licenseLimit} licenças`;
+    root.querySelector('#device-count').textContent = `${visibleDevices.length} de ${deviceRows.length} dispositivo(s)`;
+    root.querySelector('#device-list').innerHTML = visibleDevices.length ? visibleDevices.map((device) => `
+      <div class="device-row ${device.active ? '' : 'device-row--inactive'} ${device.runtime_status !== 'online' ? 'device-row--offline' : ''} ${device.is_unpaired ? 'device-row--unpaired' : ''}">
+        <div class="device-summary"><div class="device-name-row"><span class="status-dot ${device.runtime_status === 'online' ? 'status-dot--online' : 'status-dot--offline'}" aria-hidden="true"></span><strong>${escapeHtml(device.name)}</strong><span class="device-status-label">${device.runtime_status === 'online' ? 'Online' : device.is_unpaired ? 'Não pareado' : 'Offline'}</span>${device.is_unpaired ? '' : device.active ? '' : '<span class="status-pill status-pill--muted">Desativado</span>'}</div><small class="device-location">${escapeHtml(device.location_name || 'Sem unidade')} · Pesquisa: <strong>${escapeHtml(device.active_survey_title || 'Nenhuma')}</strong>${device.paired_at ? ` · Pareado em ${escapeHtml(new Date(device.paired_at).toLocaleDateString('pt-BR'))}` : ''}</small>${device.is_unpaired ? '' : `<details class="device-details"><summary>Ver detalhes</summary><div class="device-meta"><span>Visto ${device.last_seen_at ? escapeHtml(new Date(device.last_seen_at).toLocaleString('pt-BR')) : 'nunca'}</span><span>${escapeHtml(device.manufacturer || '—')} ${escapeHtml(device.model || '')} · Android ${escapeHtml(device.android_version || '—')}</span><span>Bateria ${device.battery_level === null || device.battery_level === undefined ? '—' : `${device.battery_level}%`}${device.charging === true ? ' · carregando' : ''} · ${escapeHtml(device.network_state || '—')}</span><span>Pendentes: ${device.pending_responses ?? '—'} · ${escapeHtml(device.orientation || '—')}</span></div></details>`}</div>
+        ${device.is_unpaired ? '<div class="device-assign"><span class="device-unpaired-hint">Use o código acima para parear este tablet.</span></div>' : `<div class="device-assign"><div class="device-assign__primary"><select data-survey-for="${device.id}"><option value="">Escolha uma pesquisa</option>${surveys.map((survey) => `<option value="${survey.id}" ${String(survey.id) === String(device.active_survey_id) ? 'selected' : ''}>${escapeHtml(survey.title)}</option>`).join('')}</select><button class="outline-button assign-button" data-device="${device.id}">Aplicar</button><button class="outline-button preview-device" data-device="${device.id}" ${device.active_survey_id ? '' : 'disabled'}>Pré-visualizar</button></div><span class="device-preview-message" data-preview-message="${device.id}" role="status" aria-live="polite"></span><details class="device-actions"><summary>Gerenciar</summary><div class="device-actions__menu"><button class="outline-button refresh-config" data-device="${device.id}">Atualizar config.</button><button class="outline-button clear-survey" data-device="${device.id}">Remover pesquisa</button><button class="outline-button edit-device" data-device="${device.id}" data-name="${escapeHtml(device.name)}" data-location="${escapeHtml(device.location_name || '')}">Editar</button><button class="outline-button unpair-device" data-device="${device.id}">Desparear</button>${device.active ? `<button class="outline-button danger-button deactivate-device" data-device="${device.id}">Desativar</button>` : ''}</div></details></div>`}
       </div>`).join('') : '<p class="empty-state">Nenhum tablet pareado.</p>';
 
+    deviceStatusFilter?.addEventListener('change', () => loadDashboardData(), { once: true });
+    deviceSearch?.addEventListener('input', () => loadDashboardData(), { once: true });
+    const toggleDeviceList = root.querySelector('#toggle-device-list');
+    toggleDeviceList?.addEventListener('click', () => {
+      const list = root.querySelector('#device-list');
+      const collapsed = list?.classList.toggle('is-device-list-collapsed');
+      toggleDeviceList.textContent = collapsed ? 'Mostrar tablets' : 'Recolher tablets';
+    });
     root.querySelectorAll('.assign-button').forEach((button) => {
       button.onclick = async () => {
         const surveyId = root.querySelector(`[data-survey-for="${button.dataset.device}"]`).value;
@@ -953,9 +988,9 @@ async function renderDashboard(root, user) {
     });
 
     const reportFilterOptions = {
-      'report-survey': `<option value="">Todas</option>${surveys.map((survey) => `<option value="${survey.id}">${escapeHtml(survey.title)}</option>`).join('')}`,
+      'report-survey': `<option value="">Selecione uma pesquisa</option>${surveys.map((survey) => `<option value="${survey.id}">${escapeHtml(survey.title)}</option>`).join('')}`,
       'report-location': `<option value="">Todas</option>${[...new Map(devices.filter((device) => device.location_id).map((device) => [device.location_id, device.location_name])).entries()].map(([id, name]) => `<option value="${id}">${escapeHtml(name)}</option>`).join('')}`,
-      'report-device': `<option value="">Todos</option>${devices.map((device) => `<option value="${device.id}">${escapeHtml(device.name)}</option>`).join('')}`,
+      'report-device': `<option value="">Todos</option>${devices.filter((device) => !selectedReportFilters['report-survey'] || String(device.active_survey_id) === String(selectedReportFilters['report-survey'])).map((device) => `<option value="${device.id}">${escapeHtml(device.name)}</option>`).join('')}`,
     };
     for (const id of Object.keys(reportFilterOptions)) {
       const select = root.querySelector(`#${id}`);
@@ -1003,6 +1038,25 @@ async function renderDashboard(root, user) {
     }));
     root.querySelector('#report-total').textContent = `Total de avaliações: ${metrics.total}`;
     const reportResults = root.querySelector('.report-results');
+    let tabletBreakdown = root.querySelector('#report-tablet-breakdown');
+    if (!tabletBreakdown) {
+      tabletBreakdown = document.createElement('div');
+      tabletBreakdown.id = 'report-tablet-breakdown';
+      tabletBreakdown.className = 'report-tablet-breakdown';
+      reportResults.append(tabletBreakdown);
+    }
+    tabletBreakdown.innerHTML = !selectedReportFilters['report-device'] && report.tabletBreakdown?.length
+      ? `<h4>Respostas por tablet</h4>${report.tabletBreakdown.map((item) => {
+        const categories = [
+          ['very_bad', report.distribution?.[0]],
+          ['bad', report.distribution?.[1]],
+          ['regular', report.distribution?.[2]],
+          ['good', report.distribution?.[3]],
+          ['excellent', report.distribution?.[4]],
+        ];
+        return `<div class="report-tablet-breakdown__row"><strong>${escapeHtml(item.device_name)}</strong>${categories.map(([key, option]) => `<span><i class="report-rating-face" aria-hidden="true">${escapeHtml(option?.emoji || '')}</i>${escapeHtml(option?.label || '')}: <b>${item[key]}</b></span>`).join('')}<span>Total: <b>${item.total}</b></span></div>`;
+      }).join('')}`
+      : '';
     let totalBottom = root.querySelector('#report-total-bottom');
     if (!totalBottom) {
       totalBottom = document.createElement('p');
@@ -1015,9 +1069,7 @@ async function renderDashboard(root, user) {
     root.querySelector('#report-distribution').innerHTML = report.distribution?.length
       ? report.distribution.map((item) => `<div class="distribution-row"><span class="distribution-label"><span class="distribution-emoji" aria-hidden="true">${escapeHtml(item.emoji)}</span><span>${escapeHtml(item.label)}</span></span><span class="distribution-bar"><i style="width:${metrics.total ? Math.min(100, (item.count / metrics.total) * 100) : 0}%"></i></span><strong>${item.count}</strong></div>`).join('')
       : '<p class="empty-state">Sem distribuição no período.</p>';
-    root.querySelector('#report-list').innerHTML = report.rows?.length
-      ? report.rows.slice(0, 30).map((row) => `<div class="report-row"><span class="report-row__dot" aria-hidden="true"></span><div><strong>${escapeHtml(row.survey_title)}</strong><small>${escapeHtml(row.location_name || row.device_name || 'Tablet')} · ${escapeHtml(formatReportDay(row.day))}</small></div><b>${row.total}</b></div>`).join('')
-      : '<p class="empty-state">Sem respostas no período.</p>';
+    root.querySelector('#report-list').replaceChildren();
 
     root.querySelectorAll('.clear-survey').forEach((button) => {
       button.onclick = async () => { button.disabled = true; try { await api(`/api/devices/${button.dataset.device}/remove-survey`, { method: 'POST' }); await loadDashboardData(); } finally { button.disabled = false; } };
@@ -1151,8 +1203,13 @@ async function renderDashboard(root, user) {
         finally { button.disabled = false; }
       };
     });
-    for (const id of ['report-survey', 'report-location', 'report-device']) root.querySelector(`#${id}`).onchange = loadDashboardData;
+    root.querySelector('#report-survey').onchange = () => {
+      root.querySelector('#report-device').value = '';
+      loadDashboardData();
+    };
+    for (const id of ['report-location', 'report-device']) root.querySelector(`#${id}`).onchange = loadDashboardData;
   }
 
   await loadDashboardData();
+  window.setInterval(loadDashboardData, 10_000);
 }

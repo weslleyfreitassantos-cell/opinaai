@@ -951,11 +951,12 @@ app.get('/api/reports', auth, asyncRoute(async (req, res) => {
         SELECT id,type FROM questions WHERE survey_id=s.id ORDER BY position,id LIMIT 1
       ) fq ON true
      WHERE ${filters.join(' AND ')}
+       AND (d.tenant_id IS NULL OR d.tenant_id=s.tenant_id)
   ), scored AS (
     SELECT *, CASE WHEN score_text ~ '^(10|[1-9])$' THEN score_text::numeric END AS score
       FROM filtered
   )`;
-  const [summary, rows] = await Promise.all([
+  const [summary, rows, tabletRows] = await Promise.all([
     pool.query(`${baseSql}
       SELECT COUNT(*)::int AS total,
              ROUND(AVG(score)::numeric,2) AS average_score,
@@ -973,6 +974,18 @@ app.get('/api/reports', auth, asyncRoute(async (req, res) => {
         FROM scored
        GROUP BY survey_id,survey_title,device_id,device_name,location_id,location_name,day
        ORDER BY day DESC,survey_title`, params),
+    pool.query(`${baseSql}
+      SELECT COALESCE(device_id::text, 'sem-tablet') AS device_key,
+             COALESCE(device_name, 'Sem tablet identificado') AS device_name,
+             COUNT(*)::int AS total,
+             COUNT(*) FILTER (WHERE score=1)::int AS very_bad,
+             COUNT(*) FILTER (WHERE score=2)::int AS bad,
+             COUNT(*) FILTER (WHERE score=3)::int AS regular,
+             COUNT(*) FILTER (WHERE score=4)::int AS good,
+             COUNT(*) FILTER (WHERE score=5)::int AS excellent
+        FROM scored
+       GROUP BY COALESCE(device_id::text, 'sem-tablet'), COALESCE(device_name, 'Sem tablet identificado')
+       ORDER BY device_name`, params),
   ]);
 
   const row = summary.rows[0];
@@ -991,14 +1004,26 @@ app.get('/api/reports', auth, asyncRoute(async (req, res) => {
   let distributionOptions = DEFAULT_EMOJI_OPTIONS;
   if (surveyId) {
     const configured = await pool.query(
-      'SELECT options FROM questions WHERE survey_id=$1 AND type=$2 ORDER BY position,id LIMIT 1',
-      [surveyId, 'emoji'],
+      'SELECT type, options FROM questions WHERE survey_id=$1 ORDER BY position,id LIMIT 1',
+      [surveyId],
     );
-    if (configured.rowCount) distributionOptions = normalizeEmojiOptions(configured.rows[0].options);
+    if (configured.rowCount) {
+      const question = configured.rows[0];
+      if (question.type === 'emoji') {
+        distributionOptions = normalizeEmojiOptions(question.options);
+      } else if (question.type === 'stars') {
+        distributionOptions = ['1', '2', '3', '4', '5'].map((value) => ({
+          value,
+          emoji: '★',
+          label: value,
+          animation: 'none',
+        }));
+      }
+    }
   }
   const counts = [row.very_dissatisfied_count, row.dissatisfied_low_count, row.neutral_distribution_count, row.satisfied_low_count, row.satisfied_high_count];
   const distribution = distributionOptions.map((option, index) => ({ ...option, count: Number(counts[index] || 0) }));
-  res.json({ filters: { tenantId, from, to, surveyId, locationId, deviceId }, metrics, distribution, rows: rows.rows });
+  res.json({ filters: { tenantId, from, to, surveyId, locationId, deviceId }, metrics, distribution, rows: rows.rows, tabletBreakdown: tabletRows.rows });
 }));
 
 app.post('/api/devices/register', pairingLimiter, asyncRoute(async (req, res) => {
@@ -1120,15 +1145,18 @@ app.get('/api/devices', auth, async (req, res) => {
   if (req.user.role !== 'SUPERADMIN' || tenantId) {
     if (!tenantId) return res.json([]);
     params.push(tenantId);
-    where = 'WHERE d.tenant_id=$1';
+    where = req.user.role === 'SUPERADMIN' && req.query.includeUnpaired === '1'
+      ? 'WHERE (d.tenant_id=$1 OR (d.tenant_id IS NULL AND d.active=false))'
+      : 'WHERE d.tenant_id=$1';
   }
   const result = await pool.query(
     `SELECT d.id,d.device_id,d.name,d.tenant_id,d.location_id,d.active,d.active_survey_id,d.app_version,d.last_seen_at,d.paired_at,
             d.status,d.platform,d.android_version,d.manufacturer,d.model,d.battery_level,d.charging,d.network_state,
             d.pending_responses,d.kiosk_state,d.orientation,d.config_version,
-            l.name AS location_name,s.title AS active_survey_title,
-            CASE WHEN d.last_seen_at >= now()-interval '90 seconds' THEN 'online' ELSE 'offline' END AS runtime_status
+            l.name AS location_name,s.title AS active_survey_title,t.device_limit AS tenant_device_limit,
+            CASE WHEN d.last_seen_at >= now()-interval '25 seconds' THEN 'online' ELSE 'offline' END AS runtime_status
        FROM devices d
+       LEFT JOIN tenants t ON t.id=d.tenant_id
        LEFT JOIN locations l ON l.id=d.location_id
        LEFT JOIN surveys s ON s.id=d.active_survey_id
        ${where}
@@ -1226,18 +1254,6 @@ app.post('/api/devices/:id/remove-survey', auth, asyncRoute(async (req, res) => 
   res.json({ ok: true });
 }));
 
-app.post('/api/devices/self/unpair', deviceAuth, asyncRoute(async (req, res) => {
-  if (cleanText(req.body?.deviceId, 80) !== req.device.device_id) return res.status(400).json({ error: 'invalid_device' });
-  await pool.query(
-    `UPDATE devices
-        SET tenant_id=NULL,location_id=NULL,active_survey_id=NULL,activation_code=NULL,
-            activation_expires_at=NULL,paired_at=NULL,status='unknown',config_version=config_version+1,updated_at=now()
-      WHERE id=$1 AND active=true`,
-    [req.device.id],
-  );
-  res.json({ ok: true });
-}));
-
 app.post('/api/devices/:id/unpair', auth, asyncRoute(async (req, res) => {
   if (!requireManager(req, res)) return;
   const deviceId = asPositiveInt(req.params.id);
@@ -1316,15 +1332,12 @@ app.post('/api/devices/heartbeat', deviceAuth, asyncRoute(async (req, res) => {
 app.get('/api/devices/config', deviceAuth, asyncRoute(async (req, res) => {
   await pool.query("UPDATE devices SET status='online',last_seen_at=now(),updated_at=now() WHERE id=$1 AND active=true", [req.device.id]);
   const currentConfigVersion = asPositiveInt(req.query.currentConfigVersion);
-  // O estado de pareamento tem prioridade sobre a versão de configuração.
-  // Caso contrário, um tablet que guarda uma versão antiga poderia receber
-  // `unchanged` e nunca exibir o novo código de pareamento.
+  if (currentConfigVersion && currentConfigVersion === req.device.config_version) {
+    return res.json({ status: 'unchanged', deviceId: req.device.device_id, configVersion: req.device.config_version });
+  }
   if (!req.device.tenant_id) return res.json({ status: 'unpaired', deviceId: req.device.device_id, configVersion: req.device.config_version, survey: null });
   if (!req.device.active_survey_id) {
     return res.json({ status: 'paired', deviceId: req.device.device_id, deviceName: req.device.name, configVersion: req.device.config_version, survey: null });
-  }
-  if (currentConfigVersion && currentConfigVersion === req.device.config_version) {
-    return res.json({ status: 'unchanged', deviceId: req.device.device_id, configVersion: req.device.config_version });
   }
 
   const survey = await pool.query(
