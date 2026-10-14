@@ -6,7 +6,9 @@ export function isNativeRuntime() {
 
 export function apiBaseUrl() {
   const configured = globalThis.__OPINA_API_BASE_URL__ || import.meta.env.VITE_OPINA_API_BASE_URL;
-  const base = configured || (nativeRuntime() ? 'http://127.0.0.1:4000' : '');
+  // Native production builds must never fall back to the tablet itself. The
+  // local URL only works when an API server is running inside the device.
+  const base = configured || (nativeRuntime() ? 'https://opinaai.grupotec.dev.br' : '');
   return String(base).replace(/\/$/, '');
 }
 
